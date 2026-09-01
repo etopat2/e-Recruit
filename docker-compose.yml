@@ -1,0 +1,277 @@
+name: ${COMPOSE_PROJECT_NAME:-ups-erecruit}
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erecruit}
+      POSTGRES_USER: ${POSTGRES_USER:-erecruit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-development-password}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-54321}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+  redis:
+    image: redis:7.4.5-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-change-this-development-password}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change-this-development-password}
+    ports:
+      - "${REDIS_PORT:-63791}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-erecruit-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-this-development-password}
+    ports:
+      - "${MINIO_API_PORT:-9010}:9000"
+      - "${MINIO_CONSOLE_PORT:-9011}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-erecruit-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-this-development-password}
+      MINIO_BUCKET: ${MINIO_BUCKET:-erecruit-private}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+        mc anonymous set none "local/$${MINIO_BUCKET}"
+    restart: "no"
+    networks: [erecruit]
+
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1026}:1025"
+      - "${MAILPIT_UI_PORT:-8026}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [erecruit]
+
+  document-worker:
+    build:
+      context: services/document-worker
+      target: development
+    environment:
+      DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
+      OCR_ENGINE: tesseract
+      OCR_TIMEOUT_SECONDS: 45
+      MAX_DOCUMENT_BYTES: 15728640
+    ports:
+      - "${WORKER_PORT:-8001}:8001"
+    volumes:
+      - ./services/document-worker:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+  api:
+    build:
+      context: apps/api
+      target: development
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${APP_PORT:-8080}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-erecruit}
+      DB_USERNAME: ${POSTGRES_USER:-erecruit}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-this-development-password}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change-this-development-password}
+      FILESYSTEM_DISK: s3
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-erecruit-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-this-development-password}
+      AWS_BUCKET: ${MINIO_BUCKET:-erecruit-private}
+      AWS_ENDPOINT: http://minio:9000
+      AWS_USE_PATH_STYLE_ENDPOINT: "true"
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      DOCUMENT_WORKER_URL: http://document-worker:8001
+      DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
+      QUEUE_CONNECTION: database
+      CACHE_STORE: redis
+      SESSION_DRIVER: database
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./apps/api:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      document-worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$c=@file_get_contents('http://localhost:8000/api/v1/health/live'); exit($$c===false?1:0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+  queue:
+    build:
+      context: apps/api
+      target: development
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment: &api-environment
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${APP_PORT:-8080}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-erecruit}
+      DB_USERNAME: ${POSTGRES_USER:-erecruit}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-this-development-password}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change-this-development-password}
+      FILESYSTEM_DISK: s3
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-erecruit-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-this-development-password}
+      AWS_BUCKET: ${MINIO_BUCKET:-erecruit-private}
+      AWS_ENDPOINT: http://minio:9000
+      AWS_USE_PATH_STYLE_ENDPOINT: "true"
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      DOCUMENT_WORKER_URL: http://document-worker:8001
+      DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
+      QUEUE_CONNECTION: database
+      CACHE_STORE: redis
+      SESSION_DRIVER: database
+    command: php artisan queue:work --tries=5 --backoff=5 --timeout=120
+    volumes:
+      - ./apps/api:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      document-worker:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [erecruit]
+
+  scheduler:
+    build:
+      context: apps/api
+      target: development
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment: *api-environment
+    command: php artisan schedule:work
+    volumes:
+      - ./apps/api:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [erecruit]
+
+  web:
+    build:
+      context: apps/web
+      target: development
+    environment:
+      VITE_API_BASE_URL: /api/v1
+      VITE_APP_NAME: UPS e-Recruit
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./apps/web:/app
+      - web-node-modules:/app/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5173"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+  nginx:
+    image: nginx:1.28.0-alpine
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./infra/nginx/dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [erecruit]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  web-node-modules:
+
+networks:
+  erecruit:
+    driver: bridge

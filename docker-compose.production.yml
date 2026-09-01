@@ -1,0 +1,218 @@
+name: ${COMPOSE_PROJECT_NAME:-ups-erecruit-production}
+
+x-api-environment: &api-environment
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: ${APP_URL:?APP_URL is required}
+  APP_KEY: ${APP_KEY:?APP_KEY is required}
+  LOG_CHANNEL: stderr
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_DATABASE: ${POSTGRES_DB:-erecruit}
+  DB_USERNAME: ${POSTGRES_USER:-erecruit}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  REDIS_HOST: redis
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+  FILESYSTEM_DISK: s3
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-erecruit-minio}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+  AWS_BUCKET: ${MINIO_BUCKET:-erecruit-private}
+  AWS_ENDPOINT: http://minio:9000
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+  MAIL_MAILER: smtp
+  MAIL_HOST: ${MAIL_HOST:?MAIL_HOST is required}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_USERNAME: ${MAIL_USERNAME:?MAIL_USERNAME is required}
+  MAIL_PASSWORD: ${MAIL_PASSWORD:?MAIL_PASSWORD is required}
+  MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:?MAIL_FROM_ADDRESS is required}
+  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-UPS e-Recruit}
+  DOCUMENT_WORKER_URL: http://document-worker:8001
+  DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:?DOCUMENT_WORKER_TOKEN is required}
+  QUEUE_CONNECTION: database
+  CACHE_STORE: redis
+  SESSION_DRIVER: database
+  SESSION_SECURE_COOKIE: "true"
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:?TRUSTED_PROXIES is required}
+  MALWARE_SCANNER: ${MALWARE_SCANNER:-clamav}
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: 3310
+  DOCUMENT_MAX_BYTES: ${DOCUMENT_MAX_BYTES:-15728640}
+  DOCUMENT_WORKER_TIMEOUT_SECONDS: ${DOCUMENT_WORKER_TIMEOUT_SECONDS:-60}
+  OFFLINE_PACK_EXPIRY_HOURS: ${OFFLINE_PACK_EXPIRY_HOURS:-24}
+  OFFLINE_PACK_MAXIMUM_RECORDS: ${OFFLINE_PACK_MAXIMUM_RECORDS:-1500}
+
+x-api-service: &api-service
+  image: ${API_IMAGE:-ups-erecruit-api}:${RELEASE_VERSION:?RELEASE_VERSION is required}
+  build:
+    context: apps/api
+    target: production
+  environment: *api-environment
+  volumes:
+    - api-storage:/var/www/html/storage
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    document-worker:
+      condition: service_healthy
+    clamav:
+      condition: service_started
+  restart: unless-stopped
+  networks: [erecruit]
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erecruit}
+      POSTGRES_USER: ${POSTGRES_USER:-erecruit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TZ: UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [erecruit]
+
+  redis:
+    image: redis:7.4.5-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [erecruit]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-erecruit-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [erecruit]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-erecruit-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      MINIO_BUCKET: ${MINIO_BUCKET:-erecruit-private}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+        mc anonymous set none "local/$${MINIO_BUCKET}"
+    restart: "no"
+    networks: [erecruit]
+
+  document-worker:
+    image: ${WORKER_IMAGE:-ups-erecruit-document-worker}:${RELEASE_VERSION:?RELEASE_VERSION is required}
+    build:
+      context: services/document-worker
+      target: production
+    environment:
+      DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:?DOCUMENT_WORKER_TOKEN is required}
+      OCR_ENGINE: tesseract
+      OCR_TIMEOUT_SECONDS: 45
+      MAX_DOCUMENT_BYTES: 15728640
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [erecruit]
+
+  clamav:
+    image: clamav/clamav:1.4.3
+    volumes:
+      - clamav-data:/var/lib/clamav
+    restart: unless-stopped
+    networks: [erecruit]
+
+  api:
+    <<: *api-service
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$c=@fsockopen('127.0.0.1',9000); exit($$c===false?1:0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  queue:
+    <<: *api-service
+    command: php artisan queue:work --tries=5 --backoff=5 --timeout=120
+
+  scheduler:
+    <<: *api-service
+    command: php artisan schedule:work
+
+  web:
+    image: ${WEB_IMAGE:-ups-erecruit-web}:${RELEASE_VERSION:?RELEASE_VERSION is required}
+    build:
+      context: apps/web
+      target: production
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [erecruit]
+
+  nginx:
+    image: nginx:1.28.0-alpine
+    ports:
+      - "${EDGE_PORT:-8080}:8080"
+    volumes:
+      - ./infra/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [erecruit]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  api-storage:
+  clamav-data:
+
+networks:
+  erecruit:
+    driver: bridge

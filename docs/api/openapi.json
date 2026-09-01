@@ -1,0 +1,56 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "UPS e-Recruit API",
+    "version": "1.0.0",
+    "description": "Versioned same-origin API for applicant and authorised recruitment operations. OCR is assistive evidence only."
+  },
+  "servers": [{ "url": "/api" }],
+  "security": [{ "sanctum": [] }],
+  "paths": {
+    "/v1/health/live": { "get": { "operationId": "healthLive", "security": [], "responses": { "200": { "description": "Process is live" } } } },
+    "/v1/health/ready": { "get": { "operationId": "healthReady", "security": [], "responses": { "200": { "description": "Dependencies are ready" }, "503": { "$ref": "#/components/responses/Unavailable" } } } },
+    "/v1/campaigns": {
+      "get": { "operationId": "listCampaigns", "security": [], "responses": { "200": { "description": "Published campaigns" } } },
+      "post": { "operationId": "createCampaign", "responses": { "201": { "description": "Draft campaign created" }, "422": { "$ref": "#/components/responses/ValidationError" } } }
+    },
+    "/v1/auth/register": { "post": { "operationId": "registerApplicant", "security": [], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Applicant registered" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
+    "/v1/auth/login": { "post": { "operationId": "login", "security": [], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Token or MFA challenge issued" }, "422": { "$ref": "#/components/responses/ValidationError" }, "429": { "description": "Rate limited" } } } },
+    "/v1/applications": {
+      "get": { "operationId": "listApplications", "responses": { "200": { "description": "Scope-filtered applications" }, "401": { "$ref": "#/components/responses/Unauthenticated" } } },
+      "post": { "operationId": "createApplication", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Draft created" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/v1/applications/{application}": {
+      "parameters": [{ "$ref": "#/components/parameters/ApplicationId" }],
+      "get": { "operationId": "getApplication", "responses": { "200": { "description": "Application workspace" }, "403": { "$ref": "#/components/responses/Forbidden" } } },
+      "put": { "operationId": "saveApplicationDraft", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Versioned draft saved" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/v1/applications/{application}/submit": { "post": { "operationId": "submitApplication", "parameters": [{ "$ref": "#/components/parameters/ApplicationId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Idempotent prior result" }, "201": { "description": "Locked submission and reference" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
+    "/v1/applications/{application}/documents": { "post": { "operationId": "uploadDocument", "parameters": [{ "$ref": "#/components/parameters/ApplicationId" }], "responses": { "201": { "description": "Protected document accepted for asynchronous processing" }, "415": { "description": "Signature or type rejected" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
+    "/v1/applications/{application}/verification-workbench": { "get": { "operationId": "getVerificationWorkbench", "parameters": [{ "$ref": "#/components/parameters/ApplicationId" }], "responses": { "200": { "description": "Evidence, extracted fields, comparisons, and verified values" }, "403": { "$ref": "#/components/responses/Forbidden" } } } },
+    "/v1/applications/{application}/hard-copy-receipts": { "post": { "operationId": "recordHardCopyReceipt", "parameters": [{ "$ref": "#/components/parameters/ApplicationId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Receipt recorded" } } } },
+    "/v1/applications/{application}/eligibility-runs": { "post": { "operationId": "runEligibility", "parameters": [{ "$ref": "#/components/parameters/ApplicationId" }], "responses": { "201": { "description": "Explainable eligibility result" } } } },
+    "/v1/offline/packages/{offlinePackage}/sync": { "post": { "operationId": "syncOfflineEvents", "parameters": [{ "$ref": "#/components/parameters/OfflinePackageId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Per-event acknowledgements, duplicates, and conflicts" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/v1/selection-runs": { "post": { "operationId": "runSelection", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Fingerprint-backed selection scenario" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/v1/selection-runs/{selectionRun}/certify": { "post": { "operationId": "certifySelection", "parameters": [{ "$ref": "#/components/parameters/SelectionRunId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Selection certified" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/v1/medical/results": { "post": { "operationId": "recordMedicalResult", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Restricted medical result recorded" }, "403": { "$ref": "#/components/responses/Forbidden" } } } },
+    "/v1/final-selections": { "post": { "operationId": "approveFinalSelection", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Council-approved selected and Fit candidate" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
+    "/v1/operations/metrics": { "get": { "operationId": "operationsMetrics", "responses": { "200": { "description": "Privileged non-PII operational backlog metrics" }, "403": { "$ref": "#/components/responses/Forbidden" } } } }
+  },
+  "components": {
+    "securitySchemes": { "sanctum": { "type": "http", "scheme": "bearer" } },
+    "parameters": {
+      "ApplicationId": { "name": "application", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" } },
+      "OfflinePackageId": { "name": "offlinePackage", "in": "path", "required": true, "schema": { "type": "string" } },
+      "SelectionRunId": { "name": "selectionRun", "in": "path", "required": true, "schema": { "type": "string" } }
+    },
+    "requestBodies": { "JsonBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } } },
+    "responses": {
+      "Unauthenticated": { "description": "Authentication required" },
+      "Forbidden": { "description": "Role/scope denied" },
+      "Conflict": { "description": "Version, offline, or workflow gate conflict" },
+      "ValidationError": { "description": "Input validation failed" },
+      "Unavailable": { "description": "A required dependency is unavailable" }
+    }
+  }
+}
