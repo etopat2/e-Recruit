@@ -122,7 +122,7 @@ class InterviewController extends Controller
         $this->authorize('view', $assignment->application);
         abort_unless($request->user()->hasRole('attendance_officer', 'centre_coordinator', 'panel_head'), 403);
         $data = $request->validate([
-            'status' => ['required', 'in:present,absent,late,disqualified'],
+            'status' => ['required', 'in:present,absent,late,referred,disqualified,excused,no_show'],
             'exception_reason' => ['nullable', 'string', 'max:2000', 'required_if:status,disqualified'],
             'entity_version' => ['nullable', 'integer', 'min:1'],
         ]);

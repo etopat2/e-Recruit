@@ -19,6 +19,18 @@ use Illuminate\Validation\ValidationException;
 
 class AssessmentController extends Controller
 {
+    public function definitions(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('written_examination_officer', 'panel_member', 'panel_head', 'hq_recruitment_administrator'), 403);
+        $query = AssessmentDefinition::query()->with('post:id,recruitment_campaign_id,code,name');
+        if (! $request->user()->hasRole('hq_recruitment_administrator')) {
+            $postIds = $request->user()->scopes()->where('scope_type', 'post')->pluck('scope_id');
+            $query->whereIn('recruitment_post_id', $postIds);
+        }
+
+        return response()->json(['data' => $query->orderBy('recruitment_post_id')->orderBy('code')->get()]);
+    }
+
     public function store(StoreScoreRequest $request, AuditService $audit): JsonResponse
     {
         $data = $request->validated();
@@ -27,11 +39,16 @@ class AssessmentController extends Controller
         $definition = AssessmentDefinition::query()->findOrFail($data['assessment_definition_id']);
         abort_unless($definition->recruitment_post_id === $assignment->application->recruitment_post_id, 422, 'Assessment component does not belong to this post.');
         abort_if(DB::table('panel_closures')->where('panel_id', $assignment->panel_id)->where('status', 'closed')->exists(), 409, 'The panel is closed; scores are immutable.');
+        $attendanceStatus = DB::table('attendance_records')->where('interview_assignment_id', $assignment->id)->value('status');
+        $attendanceException = ! in_array($attendanceStatus, ['present', 'late'], true);
+        if ($attendanceException) {
+            abort_unless($request->user()->hasRole('panel_head') && filled($data['attendance_exception_reason'] ?? null), 409, 'Candidate must be checked in before scoring; a panel-head exception requires a reason.');
+        }
         if ((float) $data['score'] > (float) $definition->maximum_mark) {
             throw ValidationException::withMessages(['score' => "Score must not exceed {$definition->maximum_mark}."]);
         }
 
-        $result = DB::transaction(function () use ($data, $assignment, $definition, $request): array {
+        $result = DB::transaction(function () use ($data, $assignment, $definition, $request, $attendanceException, $attendanceStatus): array {
             $score = AssessmentScore::query()->lockForUpdate()->firstOrNew([
                 'interview_assignment_id' => $assignment->id,
                 'assessment_definition_id' => $definition->id,
@@ -49,12 +66,26 @@ class AssessmentController extends Controller
                 'submitted_at' => now(),
             ])->save();
 
+            if ($attendanceException) {
+                DB::table('integrity_flags')->insert([
+                    'id' => (string) Str::ulid(),
+                    'indicator_type' => 'assessment_without_normal_check_in',
+                    'severity' => 'review',
+                    'entity_type' => AssessmentScore::class,
+                    'entity_id' => $score->id,
+                    'evidence' => json_encode(['attendance_status' => $attendanceStatus, 'reason' => $data['attendance_exception_reason']], JSON_THROW_ON_ERROR),
+                    'status' => 'open',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
             return ['conflict' => false, 'score' => $score, 'before' => $before];
         }, 3);
         if ($result['conflict']) {
             return response()->json(['message' => 'The score changed on the server.', 'current' => $result['score']], 409);
         }
-        $audit->record('assessment.score_recorded', $result['score'], before: $result['before'], after: $result['score']->toArray(), actor: $request->user());
+        $audit->record('assessment.score_recorded', $result['score'], before: $result['before'], after: $result['score']->toArray(), actor: $request->user(), reason: $data['attendance_exception_reason'] ?? null);
 
         return response()->json(['score' => $result['score']], $result['before'] === null ? 201 : 200);
     }

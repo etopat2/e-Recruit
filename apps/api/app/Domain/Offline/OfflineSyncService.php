@@ -125,6 +125,12 @@ class OfflineSyncService
                 if ($score === null) {
                     return $this->persistRejectedEvent($package, $user, $event, $batchId, 'Assessment score record was not found.');
                 }
+                $attendanceStatus = DB::table('attendance_records')
+                    ->where('interview_assignment_id', $score->interview_assignment_id)
+                    ->value('status');
+                if (! in_array($attendanceStatus, ['present', 'late'], true)) {
+                    return $this->persistRejectedEvent($package, $user, $event, $batchId, 'Candidate must be checked in before an offline score can be accepted.');
+                }
                 $serverVersion = (int) $score->entity_version;
                 $serverValue = ['score' => $score->score];
                 $baseVersion = (int) ($event['base_entity_version'] ?? 0);

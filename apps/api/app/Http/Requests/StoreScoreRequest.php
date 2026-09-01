@@ -27,6 +27,7 @@ class StoreScoreRequest extends FormRequest
             'assessment_definition_id' => ['required', 'exists:assessment_definitions,id'],
             'score' => ['required', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'attendance_exception_reason' => ['nullable', 'string', 'min:10', 'max:2000'],
             'entity_version' => ['nullable', 'integer', 'min:1'],
         ];
     }

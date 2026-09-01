@@ -32,6 +32,16 @@ class OfflineSyncTest extends TestCase
         DB::table('centre_sessions')->insert(['id' => $sessionId, 'recruitment_centre_id' => $centreId, 'recruitment_post_id' => $fixture['post']->id, 'code' => 'AM', 'session_date' => now()->toDateString(), 'reporting_time' => '08:00', 'capacity' => 20, 'status' => 'scheduled', 'created_at' => now(), 'updated_at' => now()]);
         $panel = Panel::query()->create(['centre_session_id' => $sessionId, 'code' => 'P1', 'name' => 'Panel 1', 'capacity' => 20, 'status' => 'open']);
         $assignment = InterviewAssignment::query()->create(['application_id' => $fixture['application']->id, 'centre_session_id' => $sessionId, 'panel_id' => $panel->id, 'assignment_order' => 1, 'algorithm_version' => 'test', 'input_fingerprint' => str_repeat('a', 64)]);
+        DB::table('attendance_records')->insert([
+            'id' => (string) Str::ulid(),
+            'interview_assignment_id' => $assignment->id,
+            'status' => 'late',
+            'recorded_at' => now(),
+            'recorded_by' => $user->id,
+            'entity_version' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $definition = AssessmentDefinition::query()->create(['recruitment_post_id' => $fixture['post']->id, 'campaign_version_id' => $fixture['version']->id, 'code' => 'INT', 'name' => 'Interview', 'component_type' => 'interview', 'maximum_mark' => 100, 'weight' => 100, 'mandatory' => true, 'assessor_model' => 'single', 'aggregation_method' => 'single']);
         $score = AssessmentScore::query()->create(['interview_assignment_id' => $assignment->id, 'assessment_definition_id' => $definition->id, 'assessor_id' => $user->id, 'score' => 50, 'status' => 'draft', 'entity_version' => 1]);
         $deviceId = (string) Str::ulid();

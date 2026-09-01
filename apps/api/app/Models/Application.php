@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['applicant_id', 'recruitment_campaign_id', 'recruitment_post_id', 'campaign_version_id', 'reference', 'status', 'active', 'draft_data', 'submission_snapshot', 'submission_fingerprint', 'submission_idempotency_key', 'qr_payload', 'acknowledgement_path', 'submitted_at', 'entity_version', 'assisted_by'])]
 class Application extends Model
@@ -53,6 +54,11 @@ class Application extends Model
     public function verifiedValues(): HasMany
     {
         return $this->hasMany(VerifiedValue::class);
+    }
+
+    public function interviewAssignment(): HasOne
+    {
+        return $this->hasOne(InterviewAssignment::class);
     }
 
     protected function casts(): array

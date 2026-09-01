@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\SelectionController;
 use App\Http\Controllers\Api\V1\TrainingController;
 use App\Http\Controllers\Api\V1\UploadSessionController;
 use App\Http\Controllers\Api\V1\VerificationController;
+use App\Http\Controllers\Api\V1\WrittenScoreImportController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.')->group(function (): void {
@@ -89,6 +90,11 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::put('interview-assignments/{assignment}', [InterviewController::class, 'adjust'])->name('interviews.adjust');
             Route::put('interview-assignments/{assignment}/attendance', [InterviewController::class, 'attendance'])->name('attendance.store');
             Route::post('assessment-scores', [AssessmentController::class, 'store'])->name('assessments.store');
+            Route::get('assessment-definitions', [AssessmentController::class, 'definitions'])->name('assessments.definitions.index');
+            Route::get('assessment-score-imports', [WrittenScoreImportController::class, 'index'])->name('assessment-imports.index');
+            Route::get('assessment-score-imports/template', [WrittenScoreImportController::class, 'template'])->name('assessment-imports.template');
+            Route::post('assessment-score-imports', [WrittenScoreImportController::class, 'store'])->middleware('throttle:uploads')->name('assessment-imports.store');
+            Route::get('assessment-score-imports/{scoreImport}/error-report', [WrittenScoreImportController::class, 'errorReport'])->name('assessment-imports.error-report');
             Route::get('interview-assignments/{assignment}/aggregate', [AssessmentController::class, 'aggregate'])->name('assessments.aggregate');
             Route::post('assessment-scores/{score}/adjustments', [AssessmentController::class, 'adjust'])->name('assessments.adjust');
             Route::post('panels/{panel}/close', [AssessmentController::class, 'closePanel'])->name('panels.close');
