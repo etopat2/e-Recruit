@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\CampaignController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EligibilityController;
 use App\Http\Controllers\Api\V1\GeographyController;
+use App\Http\Controllers\Api\V1\GovernanceController;
 use App\Http\Controllers\Api\V1\HardCopyController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\HelpdeskController;
@@ -128,6 +129,14 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::get('audit-logs', [AuditController::class, 'index'])->name('audit.index');
             Route::get('audit-logs/verify-chain', [AuditController::class, 'verify'])->name('audit.verify');
             Route::post('integrity-flags/{flag}/review', [AuditController::class, 'reviewFlag'])->name('integrity-flags.review');
+
+            Route::get('governance/retention', [GovernanceController::class, 'index'])->name('governance.retention.index');
+            Route::post('governance/retention/policies', [GovernanceController::class, 'storePolicy'])->name('governance.retention.policies.store');
+            Route::post('governance/legal-holds', [GovernanceController::class, 'placeHold'])->name('governance.legal-holds.store');
+            Route::post('governance/legal-holds/{legalHold}/release', [GovernanceController::class, 'releaseHold'])->name('governance.legal-holds.release');
+            Route::post('governance/purge-requests', [GovernanceController::class, 'requestPurge'])->name('governance.purge-requests.store');
+            Route::post('governance/purge-requests/{purgeRequest}/decision', [GovernanceController::class, 'approvePurge'])->name('governance.purge-requests.decision');
+            Route::post('governance/purge-requests/{purgeRequest}/execute', [GovernanceController::class, 'executePurge'])->name('governance.purge-requests.execute');
         });
     });
 });

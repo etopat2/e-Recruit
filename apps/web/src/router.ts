@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/staff/campaigns', name: 'campaigns', component: () => import('./views/CampaignConfigurationView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/geography', name: 'geography', component: () => import('./views/GeographyConfigurationView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/assessments', name: 'assessments', component: () => import('./views/AssessmentImportView.vue'), meta: { auth: true, staff: true } },
+    { path: '/staff/governance', name: 'governance', component: () => import('./views/GovernanceView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/selection', name: 'selection', component: () => import('./views/SelectionConsoleView.vue'), meta: { auth: true, staff: true } },
     { path: '/field/offline', name: 'offline', component: () => import('./views/OfflineWorkspaceView.vue'), meta: { auth: true, staff: true } },
     { path: '/help', name: 'help', component: () => import('./views/HelpdeskView.vue'), meta: { auth: true } },
