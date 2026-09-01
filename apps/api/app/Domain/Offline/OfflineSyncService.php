@@ -524,7 +524,10 @@ class OfflineSyncService
         if ($actionType === 'MEDICAL_RESULT_RECORDED') {
             $application = Application::query()->find($entityId);
 
-            return $application !== null && $user->hasRole('medical_officer') && $this->scopeAuthorizer->canViewRestrictedMedical($user, $application);
+            $certifiedSelected = $application !== null && DB::table('selection_outcomes')->join('selection_runs', 'selection_runs.id', '=', 'selection_outcomes.selection_run_id')->where('selection_outcomes.application_id', $application->id)->where('selection_outcomes.outcome', 'selected')->where('selection_runs.status', 'certified')->exists();
+            $recommendedReserve = $application !== null && DB::table('reserve_replacement_recommendations')->join('selection_runs', 'selection_runs.id', '=', 'reserve_replacement_recommendations.selection_run_id')->where('reserve_replacement_recommendations.reserve_application_id', $application->id)->where('reserve_replacement_recommendations.status', 'pending_approval')->where('selection_runs.status', 'certified')->exists();
+
+            return $application !== null && $user->hasRole('medical_officer') && $this->scopeAuthorizer->canViewRestrictedMedical($user, $application) && ($certifiedSelected || $recommendedReserve);
         }
         if ($actionType === 'PANEL_CLOSED') {
             $panel = Panel::query()->with('assignments.application')->find($entityId);

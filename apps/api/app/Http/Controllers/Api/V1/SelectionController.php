@@ -205,6 +205,7 @@ class SelectionController extends Controller
     public function override(Request $request, SelectionRun $selectionRun, AuditService $audit): JsonResponse
     {
         abort_unless($request->user()->hasRole('prisons_council_secretariat'), 403);
+        $this->authorize('view', $selectionRun);
         $data = $request->validate([
             'application_id' => ['required', 'exists:applications,id'],
             'replaced_application_id' => ['nullable', 'exists:applications,id'],
@@ -231,5 +232,49 @@ class SelectionController extends Controller
         $audit->record('selection.override_requested', $selectionRun, actor: $request->user(), after: $data, reason: $data['justification']);
 
         return response()->json(['override_id' => $id, 'status' => 'pending'], 201);
+    }
+
+    public function decideOverride(Request $request, SelectionRun $selectionRun, string $override, AuditService $audit): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('prisons_council_secretariat'), 403);
+        $this->authorize('view', $selectionRun);
+        $data = $request->validate([
+            'decision' => ['required', 'in:approve,reject'],
+            'reason' => ['required', 'string', 'min:20', 'max:4000'],
+            'approval_reference' => ['required', 'string', 'max:255'],
+        ]);
+        $record = DB::table('selection_overrides')->where('id', $override)->where('selection_run_id', $selectionRun->id)->firstOrFail();
+        abort_unless($record->status === 'pending', 409, 'This selection override has already been decided.');
+        abort_if((int) $record->requested_by === (int) $request->user()->id, 409, 'The requester cannot approve their own selection override.');
+
+        DB::transaction(function () use ($record, $selectionRun, $data, $request): void {
+            if ($data['decision'] === 'approve') {
+                $outcome = $selectionRun->outcomes()->where('application_id', $record->application_id)->lockForUpdate()->firstOrFail();
+                $trace = $outcome->decision_trace ?? [];
+                $trace['manual_override'] = [
+                    'override_id' => $record->id,
+                    'previous_outcome' => $outcome->outcome,
+                    'new_outcome' => $record->new_outcome,
+                    'reason_code' => $record->reason_code,
+                    'approved_at' => now()->toISOString(),
+                ];
+                $outcome->forceFill(['outcome' => $record->new_outcome, 'manual_adjustment' => true, 'decision_trace' => $trace])->save();
+                if ($record->replaced_application_id !== null && $record->new_outcome === 'selected') {
+                    $replaced = $selectionRun->outcomes()->where('application_id', $record->replaced_application_id)->lockForUpdate()->firstOrFail();
+                    $replacedTrace = $replaced->decision_trace ?? [];
+                    $replacedTrace['replaced_by_override'] = ['override_id' => $record->id, 'promoted_application_id' => $record->application_id];
+                    $replaced->forceFill(['outcome' => 'reserve', 'manual_adjustment' => true, 'decision_trace' => $replacedTrace])->save();
+                }
+            }
+            DB::table('selection_overrides')->where('id', $record->id)->update([
+                'status' => $data['decision'] === 'approve' ? 'approved' : 'rejected',
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }, 3);
+        $audit->record('selection.override_decided', $selectionRun, actor: $request->user(), after: ['override_id' => $record->id, 'decision' => $data['decision']], reason: $data['reason'], approvalReference: $data['approval_reference']);
+
+        return response()->json(['override' => DB::table('selection_overrides')->where('id', $record->id)->first(), 'outcomes' => $selectionRun->outcomes()->orderBy('position')->get()]);
     }
 }

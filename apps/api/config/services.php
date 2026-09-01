@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    'sms' => [
+        'driver' => env('SMS_DRIVER', 'null'),
+        'base_url' => env('SMS_BASE_URL'),
+        'token' => env('SMS_TOKEN'),
+        'timeout' => (int) env('SMS_TIMEOUT_SECONDS', 15),
+    ],
+
+    'push' => [
+        'driver' => env('PUSH_DRIVER', 'null'),
+        'base_url' => env('PUSH_BASE_URL'),
+        'token' => env('PUSH_TOKEN'),
+        'public_key' => env('PUSH_VAPID_PUBLIC_KEY'),
+        'timeout' => (int) env('PUSH_TIMEOUT_SECONDS', 15),
+    ],
+
 ];

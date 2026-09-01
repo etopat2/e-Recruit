@@ -100,3 +100,11 @@ export async function getOfflinePackage<T>(id: string): Promise<(CachedOfflinePa
   if (!packageRecord) return undefined
   return { ...packageRecord, payload: await openValue<T>(packageRecord.sealedPayload) }
 }
+
+export async function purgeOfflineData(): Promise<void> {
+  await offlineDb.transaction('rw', [offlineDb.drafts, offlineDb.events, offlineDb.packages, offlineDb.deviceKeys], async () => {
+    await Promise.all([offlineDb.drafts.clear(), offlineDb.events.clear(), offlineDb.packages.clear(), offlineDb.deviceKeys.clear()])
+  })
+  localStorage.removeItem('ups_package_id')
+  localStorage.removeItem('ups_device_record_id')
+}

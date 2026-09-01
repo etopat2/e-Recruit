@@ -38,6 +38,8 @@ export const useSessionStore = defineStore('session', {
       try {
         await api('/auth/logout', { method: 'POST' })
       } finally {
+        const { purgeOfflineData } = await import('../offline/database')
+        await purgeOfflineData()
         setAuthToken(null)
         localStorage.removeItem('ups_cached_user')
         this.user = null

@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         navigateFallback: '/index.html',
+        importScripts: ['/push-handler.js'],
         runtimeCaching: [{
           urlPattern: ({ url }) => url.pathname.startsWith('/api/v1/campaigns'),
           handler: 'NetworkFirst',

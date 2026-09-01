@@ -117,6 +117,9 @@ class AssessmentController extends Controller
     public function closePanel(Request $request, Panel $panel, CanonicalJson $canonicalJson, AuditService $audit): JsonResponse
     {
         abort_unless($request->user()->hasRole('panel_head'), 403);
+        $firstApplication = $panel->assignments()->with('application')->first()?->application;
+        abort_if($firstApplication === null, 422, 'The panel has no assigned applications.');
+        $this->authorize('view', $firstApplication);
         $data = $request->validate(['confirmation' => ['required', 'accepted']]);
         unset($data);
         abort_if(DB::table('sync_conflicts')->where('status', 'open')->whereIn(
@@ -167,6 +170,8 @@ class AssessmentController extends Controller
     public function adjust(Request $request, AssessmentScore $score, AuditService $audit): JsonResponse
     {
         abort_unless($request->user()->hasRole('panel_head', 'hq_recruitment_administrator'), 403);
+        $score->loadMissing(['assignment.application', 'definition']);
+        $this->authorize('view', $score->assignment->application);
         $data = $request->validate([
             'new_score' => ['required', 'numeric', 'min:0'],
             'reason_code' => ['required', 'string', 'max:50'],
@@ -188,5 +193,70 @@ class AssessmentController extends Controller
         $audit->record('assessment.adjustment_requested', $score, actor: $request->user(), after: $data, reason: $data['justification']);
 
         return response()->json(['adjustment_id' => $adjustmentId, 'status' => 'pending_approval'], 201);
+    }
+
+    public function decideAdjustment(Request $request, string $adjustment, AuditService $audit): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('hq_recruitment_administrator'), 403);
+        $data = $request->validate([
+            'decision' => ['required', 'in:approve,reject'],
+            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'approval_reference' => ['required', 'string', 'max:255'],
+        ]);
+        $record = DB::table('score_adjustments')->where('id', $adjustment)->firstOrFail();
+        abort_unless($record->status === 'pending', 409, 'This score adjustment has already been decided.');
+        abort_if((int) $record->requested_by === (int) $request->user()->id, 409, 'The requester cannot approve their own score adjustment.');
+
+        $score = AssessmentScore::query()->with(['definition', 'assignment'])->findOrFail($record->assessment_score_id);
+        abort_if((float) $record->new_score > (float) $score->definition->maximum_mark, 422, 'Adjusted score exceeds the configured maximum.');
+        if ($data['decision'] === 'approve') {
+            abort_if(DB::table('panel_closures')->where('panel_id', $score->assignment->panel_id)->where('status', 'closed')->exists(), 409, 'Reopen the panel through the controlled workflow before approving a score correction.');
+        }
+
+        DB::transaction(function () use ($record, $score, $data, $request): void {
+            if ($data['decision'] === 'approve') {
+                $score->forceFill([
+                    'score' => $record->new_score,
+                    'status' => 'submitted',
+                    'entity_version' => $score->entity_version + 1,
+                    'submitted_at' => now(),
+                ])->save();
+            }
+            DB::table('score_adjustments')->where('id', $record->id)->update([
+                'status' => $data['decision'] === 'approve' ? 'approved' : 'rejected',
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+                'decision_reason' => $data['reason'],
+                'decided_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }, 3);
+        $audit->record('assessment.adjustment_decided', $score, actor: $request->user(), before: ['score' => $record->previous_score], after: ['score' => $data['decision'] === 'approve' ? $record->new_score : $score->score, 'decision' => $data['decision']], reason: $data['reason'], approvalReference: $data['approval_reference']);
+
+        return response()->json(['adjustment' => DB::table('score_adjustments')->where('id', $record->id)->first()]);
+    }
+
+    public function reopenPanel(Request $request, Panel $panel, AuditService $audit): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('hq_recruitment_administrator'), 403);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:20', 'max:4000'],
+            'approval_reference' => ['required', 'string', 'max:255'],
+        ]);
+        $closure = DB::table('panel_closures')->where('panel_id', $panel->id)->where('status', 'closed')->first();
+        abort_if($closure === null, 409, 'The panel does not have an active closure.');
+        DB::transaction(function () use ($closure, $panel, $data, $request): void {
+            DB::table('panel_closures')->where('id', $closure->id)->update([
+                'status' => 'reopened',
+                'reopen_reason' => $data['reason'],
+                'reopened_by' => $request->user()->id,
+                'reopened_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $panel->forceFill(['status' => 'open'])->save();
+        }, 3);
+        $audit->record('panel.reopened', $panel, actor: $request->user(), before: ['status' => 'closed'], after: ['status' => 'open'], reason: $data['reason'], approvalReference: $data['approval_reference']);
+
+        return response()->json(['panel' => $panel->fresh(), 'closure' => DB::table('panel_closures')->where('id', $closure->id)->first()]);
     }
 }

@@ -403,6 +403,9 @@ class OfflineSyncController extends Controller
             $application = Application::query()->with('applicant')->find($entityId);
             abort_if($application === null, 422, 'A requested application was not found.');
             abort_unless($scopeAuthorizer->canViewRestrictedMedical($request->user(), $application), 403);
+            $certifiedSelected = DB::table('selection_outcomes')->join('selection_runs', 'selection_runs.id', '=', 'selection_outcomes.selection_run_id')->where('selection_outcomes.application_id', $application->id)->where('selection_outcomes.outcome', 'selected')->where('selection_runs.status', 'certified')->exists();
+            $recommendedReserve = DB::table('reserve_replacement_recommendations')->join('selection_runs', 'selection_runs.id', '=', 'reserve_replacement_recommendations.selection_run_id')->where('reserve_replacement_recommendations.reserve_application_id', $application->id)->where('reserve_replacement_recommendations.status', 'pending_approval')->where('selection_runs.status', 'certified')->exists();
+            abort_unless($certifiedSelected || $recommendedReserve, 409, 'Only certified provisionally selected candidates or formally recommended reserves may be included in a medical pack.');
             $scheduleId = (string) ($scope['medical_schedule_id'] ?? '');
             $schedule = DB::table('medical_schedules')->where('id', $scheduleId)->where('recruitment_post_id', $application->recruitment_post_id)->first();
             abort_if($schedule === null, 422, 'A valid medical schedule must be included in the pack scope.');

@@ -198,6 +198,9 @@ td small { color: var(--muted); margin-top: .2rem; }
 .run-card, .ticket-card { margin-bottom: .8rem; }
 .run-card > div, .ticket-card > div { display: flex; justify-content: space-between; gap: 1rem; }
 .run-card code { display: block; margin: .7rem 0; }
+.notification-row { align-items: flex-start; background: var(--paper); border: 1px solid var(--line); border-radius: .45rem; color: var(--ink); display: flex; justify-content: space-between; margin-top: .55rem; padding: .7rem; text-align: left; width: 100%; }
+.notification-row.unread { border-left: 4px solid var(--gold); font-weight: 700; }
+.notification-row small { color: var(--muted); font-weight: 400; }
 .result-box { background: #eee6d7; padding: 1.2rem; border-radius: .6rem; margin-top: 1rem; }
 .offline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 2rem max(7vw, 1.25rem); }
 .mono-note { font-family: ui-monospace, monospace; overflow-wrap: anywhere; background: #eee6d7; padding: .7rem; }

@@ -84,20 +84,54 @@ class ScopeAuthorizer
 
     private function applicationBelongsToCentre(Application $application, ?string $centreId): bool
     {
-        return DB::table('interview_assignments')
+        if (DB::table('interview_assignments')
             ->join('centre_sessions', 'centre_sessions.id', '=', 'interview_assignments.centre_session_id')
             ->where('interview_assignments.application_id', $application->id)
             ->where('centre_sessions.recruitment_centre_id', $centreId)
-            ->exists();
+            ->exists()) {
+            return true;
+        }
+
+        return $this->applicationMapsTo($application, centreId: $centreId);
     }
 
     private function applicationBelongsToRegion(Application $application, ?string $regionId): bool
     {
-        return DB::table('interview_assignments')
+        if (DB::table('interview_assignments')
             ->join('centre_sessions', 'centre_sessions.id', '=', 'interview_assignments.centre_session_id')
             ->join('recruitment_centres', 'recruitment_centres.id', '=', 'centre_sessions.recruitment_centre_id')
             ->where('interview_assignments.application_id', $application->id)
             ->where('recruitment_centres.prison_region_id', $regionId)
+            ->exists()) {
+            return true;
+        }
+
+        return $this->applicationMapsTo($application, regionId: $regionId);
+    }
+
+    private function applicationMapsTo(Application $application, ?string $centreId = null, ?string $regionId = null): bool
+    {
+        $policy = DB::table('recruitment_posts')->where('id', $application->recruitment_post_id)->value('lc_source_policy');
+        $addressTypes = match ($policy) {
+            'origin' => ['origin'],
+            'residence' => ['residence'],
+            default => ['origin', 'residence'],
+        };
+
+        return DB::table('applicant_addresses')
+            ->join('district_centre_mappings', 'district_centre_mappings.district_id', '=', 'applicant_addresses.district_id')
+            ->join('recruitment_centres', 'recruitment_centres.id', '=', 'district_centre_mappings.recruitment_centre_id')
+            ->where('applicant_addresses.application_id', $application->id)
+            ->whereIn('applicant_addresses.address_type', $addressTypes)
+            ->where(function ($query) use ($application): void {
+                $query->whereNull('district_centre_mappings.recruitment_campaign_id')->orWhere('district_centre_mappings.recruitment_campaign_id', $application->recruitment_campaign_id);
+            })
+            ->where('district_centre_mappings.effective_from', '<=', now()->toDateString())
+            ->where(function ($query): void {
+                $query->whereNull('district_centre_mappings.effective_to')->orWhere('district_centre_mappings.effective_to', '>=', now()->toDateString());
+            })
+            ->when($centreId !== null, fn ($query) => $query->where('district_centre_mappings.recruitment_centre_id', $centreId))
+            ->when($regionId !== null, fn ($query) => $query->where('recruitment_centres.prison_region_id', $regionId))
             ->exists();
     }
 }

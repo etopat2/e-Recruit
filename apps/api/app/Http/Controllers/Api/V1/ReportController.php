@@ -50,7 +50,7 @@ class ReportController extends Controller
     {
         abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'auditor'), 403);
         $data = $request->validate([
-            'export_type' => ['required', 'in:applications,selection,audit'],
+            'export_type' => ['required', 'in:applications,selection,training_handoff,audit'],
             'format' => ['required', 'in:csv'],
             'campaign_id' => ['nullable', 'exists:recruitment_campaigns,id'],
             'purpose' => ['required', 'string', 'min:10', 'max:1000'],
@@ -66,6 +66,15 @@ class ReportController extends Controller
             'selection' => DB::table('selection_outcomes')->join('applications', 'applications.id', '=', 'selection_outcomes.application_id')
                 ->select('applications.reference', 'selection_outcomes.outcome', 'selection_outcomes.position', 'selection_outcomes.score', 'selection_outcomes.bucket_key')
                 ->orderBy('selection_outcomes.selection_run_id')->orderBy('selection_outcomes.position')->get(),
+            'training_handoff' => DB::table('training_reporting')
+                ->join('training_invites', 'training_invites.id', '=', 'training_reporting.training_invite_id')
+                ->join('final_selections', 'final_selections.id', '=', 'training_invites.final_selection_id')
+                ->join('applications', 'applications.id', '=', 'final_selections.application_id')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->where('training_reporting.status', 'admitted')
+                ->when(isset($data['campaign_id']), fn ($query) => $query->where('applications.recruitment_campaign_id', $data['campaign_id']))
+                ->select('applications.reference', 'applicants.first_name', 'applicants.middle_names', 'applicants.last_name', 'applications.recruitment_post_id', 'training_reporting.recorded_at as admitted_at')
+                ->orderBy('applications.reference')->get(),
             'audit' => DB::table('audit_logs')->select('occurred_at', 'action', 'entity_type', 'entity_id', 'correlation_id', 'entry_hash')->orderBy('occurred_at')->get(),
         };
         $handle = fopen('php://temp', 'w+b');

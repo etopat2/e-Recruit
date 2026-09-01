@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\HelpdeskController;
 use App\Http\Controllers\Api\V1\InterviewController;
 use App\Http\Controllers\Api\V1\MedicalController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\OfficialArtifactController;
 use App\Http\Controllers\Api\V1\OfflineSyncController;
 use App\Http\Controllers\Api\V1\ReportController;
@@ -39,6 +40,11 @@ Route::prefix('v1')->name('api.')->group(function (): void {
         Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::post('auth/mfa/enrol', [AuthController::class, 'enrolMfa'])->name('auth.mfa.enrol');
         Route::post('auth/mfa/confirm', [AuthController::class, 'confirmMfa'])->name('auth.mfa.confirm');
+        Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+        Route::get('notifications/push/config', [NotificationController::class, 'pushConfig'])->name('notifications.push.config');
+        Route::post('notifications/push/subscriptions', [NotificationController::class, 'subscribe'])->name('notifications.push.subscribe');
+        Route::delete('notifications/push/subscriptions/{pushSubscription}', [NotificationController::class, 'unsubscribe'])->name('notifications.push.unsubscribe');
 
         Route::middleware('mfa')->group(function (): void {
 
@@ -61,6 +67,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::get('helpdesk/tickets/{ticket}', [HelpdeskController::class, 'show'])->name('helpdesk.show');
             Route::post('helpdesk/tickets/{ticket}/messages', [HelpdeskController::class, 'message'])->name('helpdesk.messages.store');
             Route::post('applications/{application}/appeals', [HelpdeskController::class, 'appeal'])->name('appeals.store');
+            Route::post('appeals/{appeal}/decision', [HelpdeskController::class, 'decideAppeal'])->name('appeals.decision');
 
             Route::middleware('role:hq_recruitment_administrator,system_administrator')->group(function (): void {
                 Route::get('admin/campaigns', [CampaignController::class, 'adminIndex'])->name('admin.campaigns.index');
@@ -90,6 +97,8 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('posts/{post}/interview-assignments', [InterviewController::class, 'assign'])->name('interviews.assign');
             Route::put('interview-assignments/{assignment}', [InterviewController::class, 'adjust'])->name('interviews.adjust');
             Route::put('interview-assignments/{assignment}/attendance', [InterviewController::class, 'attendance'])->name('attendance.store');
+            Route::post('interview-assignments/{assignment}/invitation', [InterviewController::class, 'invite'])->name('interviews.invitation.store');
+            Route::get('interview-invitations/{invitation}/download', [InterviewController::class, 'downloadInvitation'])->name('interviews.invitation.download');
             Route::post('assessment-scores', [AssessmentController::class, 'store'])->name('assessments.store');
             Route::get('assessment-definitions', [AssessmentController::class, 'definitions'])->name('assessments.definitions.index');
             Route::get('assessment-score-imports', [WrittenScoreImportController::class, 'index'])->name('assessment-imports.index');
@@ -99,6 +108,8 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::get('interview-assignments/{assignment}/aggregate', [AssessmentController::class, 'aggregate'])->name('assessments.aggregate');
             Route::post('assessment-scores/{score}/adjustments', [AssessmentController::class, 'adjust'])->name('assessments.adjust');
             Route::post('panels/{panel}/close', [AssessmentController::class, 'closePanel'])->name('panels.close');
+            Route::post('panels/{panel}/reopen', [AssessmentController::class, 'reopenPanel'])->name('panels.reopen');
+            Route::post('score-adjustments/{adjustment}/decision', [AssessmentController::class, 'decideAdjustment'])->name('assessments.adjustments.decision');
 
             Route::post('offline/devices', [OfflineSyncController::class, 'registerDevice'])->name('offline.devices.store');
             Route::post('offline/devices/{device}/revoke', [OfflineSyncController::class, 'revokeDevice'])->name('offline.devices.revoke');
@@ -116,13 +127,19 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::get('selection-runs/{selectionRun}', [SelectionController::class, 'show'])->name('selection.show');
             Route::post('selection-runs/{selectionRun}/certify', [SelectionController::class, 'certify'])->name('selection.certify');
             Route::post('selection-runs/{selectionRun}/overrides', [SelectionController::class, 'override'])->name('selection.overrides.store');
+            Route::post('selection-runs/{selectionRun}/overrides/{override}/decision', [SelectionController::class, 'decideOverride'])->name('selection.overrides.decision');
 
             Route::post('medical/schedules', [MedicalController::class, 'schedule'])->name('medical.schedules.store');
+            Route::post('medical/invitations', [MedicalController::class, 'invite'])->name('medical.invitations.store');
+            Route::get('medical/invitations/{invitation}/download', [MedicalController::class, 'downloadInvitation'])->name('medical.invitations.download');
             Route::post('medical/results', [MedicalController::class, 'store'])->name('medical.results.store');
             Route::get('medical/results/{medicalResult}', [MedicalController::class, 'show'])->name('medical.results.show');
             Route::post('final-selections', [MedicalController::class, 'approveFinalSelection'])->name('final-selections.store');
             Route::post('training/invitations', [TrainingController::class, 'invite'])->name('training.invites.store');
+            Route::get('training/invitations/{invitation}/download', [TrainingController::class, 'downloadInvitation'])->name('training.invites.download');
             Route::post('training/reporting', [TrainingController::class, 'report'])->name('training.reporting.store');
+            Route::post('training/replacement-recommendations', [TrainingController::class, 'recommendReplacement'])->name('training.replacement-recommendations.store');
+            Route::post('training/replacement-recommendations/{recommendation}/decision', [TrainingController::class, 'decideReplacement'])->name('training.replacement-recommendations.decision');
             Route::post('training/replacements', [TrainingController::class, 'replace'])->name('training.replacements.store');
 
             Route::get('reports/dashboard', [ReportController::class, 'dashboard'])->name('reports.dashboard');
