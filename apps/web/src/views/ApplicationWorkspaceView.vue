@@ -8,10 +8,29 @@ import type { ApplicationRecord } from '../types'
 
 const route = useRoute(); const router = useRouter()
 const application = ref<ApplicationRecord | null>(null)
-const draft = reactive<Record<string, any>>({ personal: {}, address: {}, education: [], declaration: {} })
+type FormFields = Record<string, string | number | undefined>
+interface EducationDraft extends FormFields { level: string; institution: string; completion_year: string; result: string }
+interface DeclarationFields { [key: string]: string | boolean | undefined; accepted: boolean }
+interface ApplicationDraft {
+  [key: string]: FormFields | EducationDraft[] | DeclarationFields
+  personal: FormFields
+  address: FormFields
+  education: EducationDraft[]
+  declaration: DeclarationFields
+}
+const draft = reactive<ApplicationDraft>({
+  personal: { full_name: '', nin: '', date_of_birth: '', nationality: '', phone: '', email: '' },
+  address: { district: '', county: '', subcounty: '', parish: '', physical_address: '' },
+  education: [],
+  declaration: { accepted: false },
+})
 const activeSection = ref('personal'); const saveState = ref<'saved' | 'saving' | 'offline' | 'conflict'>('saved')
 const error = ref(''); const uploadType = ref('national_id'); const uploadFile = ref<File | null>(null); const submitting = ref(false)
 const sections = computed(() => Object.keys(application.value?.post.sections || { personal: true, address: true, education: true, declaration: true }))
+const activeFields = computed<FormFields>(() => {
+  const section = draft[activeSection.value]
+  return Array.isArray(section) ? {} : section as FormFields
+})
 const completion = computed(() => {
   if (!sections.value.length) return 0
   return Math.round(sections.value.filter((section) => {
@@ -54,7 +73,10 @@ async function saveDraft() {
   }
 }
 
-function addEducation() { draft.education ||= []; draft.education.push({ level: '', institution: '', completion_year: '', result: '' }) }
+function addEducation() {
+  if (!Array.isArray(draft.education)) draft.education = []
+  draft.education.push({ level: '', institution: '', completion_year: '', result: '' })
+}
 
 async function upload() {
   if (!application.value || !uploadFile.value) return
@@ -88,12 +110,12 @@ async function submit() {
     <nav class="wizard-nav" aria-label="Application sections"><button v-for="(section, index) in sections" :key="section" :class="{ active: activeSection === section }" @click="activeSection = section"><span>{{ index + 1 }}</span>{{ section.replaceAll('_', ' ') }}</button><button :class="{ active: activeSection === 'documents' }" @click="activeSection = 'documents'"><span>{{ sections.length + 1 }}</span>Documents</button><button :class="{ active: activeSection === 'review' }" @click="activeSection = 'review'"><span>{{ sections.length + 2 }}</span>Review</button></nav>
     <div class="wizard-panel">
       <form v-if="activeSection === 'personal'" @submit.prevent><p class="eyebrow">Personal details</p><h2>Details matching your identification</h2><div class="field-grid"><label>Full legal name<input v-model="draft.personal.full_name" required /></label><label>National ID number<input v-model="draft.personal.nin" required /></label><label>Date of birth<input v-model="draft.personal.date_of_birth" type="date" required /></label><label>Nationality<input v-model="draft.personal.nationality" required /></label><label>Phone number<input v-model="draft.personal.phone" type="tel" /></label><label>Email address<input v-model="draft.personal.email" type="email" /></label></div></form>
-      <form v-else-if="activeSection === 'address' || activeSection === 'origin' || activeSection === 'residence'" @submit.prevent><p class="eyebrow">Geography</p><h2>{{ activeSection }} details</h2><div class="field-grid"><label>District<input v-model="draft[activeSection].district" required /></label><label>County<input v-model="draft[activeSection].county" /></label><label>Sub-county<input v-model="draft[activeSection].subcounty" /></label><label>Parish<input v-model="draft[activeSection].parish" /></label><label class="wide">Village / physical address<textarea v-model="draft[activeSection].physical_address" /></label></div></form>
+      <form v-else-if="activeSection === 'address' || activeSection === 'origin' || activeSection === 'residence'" @submit.prevent><p class="eyebrow">Geography</p><h2>{{ activeSection }} details</h2><div class="field-grid"><label>District<input v-model="activeFields.district" required /></label><label>County<input v-model="activeFields.county" /></label><label>Sub-county<input v-model="activeFields.subcounty" /></label><label>Parish<input v-model="activeFields.parish" /></label><label class="wide">Village / physical address<textarea v-model="activeFields.physical_address" /></label></div></form>
       <div v-else-if="activeSection === 'education'"><p class="eyebrow">Qualifications</p><div class="section-heading"><h2>Education records</h2><button class="button secondary compact" @click="addEducation">Add qualification</button></div><article v-for="(record, index) in draft.education" :key="index" class="repeat-card"><div class="field-grid"><label>Level<input v-model="record.level" /></label><label>Institution<input v-model="record.institution" /></label><label>Completion year<input v-model="record.completion_year" inputmode="numeric" /></label><label>Result / class<input v-model="record.result" /></label></div><button class="text-button danger" @click="draft.education.splice(index, 1)">Remove</button></article><div v-if="!draft.education.length" class="empty-state compact"><p>Add each completed qualification.</p></div></div>
       <form v-else-if="activeSection === 'declaration' || activeSection === 'declarations'" @submit.prevent><p class="eyebrow">Declaration</p><h2>Confirm the information is yours</h2><label class="checkbox"><input v-model="draft.declaration.accepted" type="checkbox" /> <span>I declare that the information and documents I provide are complete and accurate. I understand that false information may disqualify my application.</span></label></form>
       <form v-else-if="activeSection === 'documents'" @submit.prevent="upload"><p class="eyebrow">Protected evidence</p><h2>Upload clear documents</h2><p class="form-intro">PDF, JPEG, or PNG. Files are signature-checked, malware-screened, versioned, and kept in protected storage.</p><div class="upload-row"><label>Document type<select v-model="uploadType"><option value="national_id">National identification</option><option value="academic_certificate">Academic certificate</option><option value="passport_photo">Passport photograph</option><option value="skill_certificate">Skill certificate</option></select></label><label>Choose file<input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /></label><button class="button primary" :disabled="!uploadFile">Upload</button></div><ul class="document-list"><li v-for="document in application.documents" :key="String(document.id)"><span><strong>{{ document.document_type }}</strong><small>{{ document.filename }}</small></span><StatusBadge :status="String(document.processing_status)" /></li></ul></form>
       <div v-else-if="activeSection === 'review'"><p class="eyebrow">Final review</p><h2>Submit your application</h2><div class="review-summary"><div><span>Sections complete</span><strong>{{ completion }}%</strong></div><div><span>Documents uploaded</span><strong>{{ application.documents.length }}</strong></div><div><span>Hard copies</span><strong>{{ application.post.hard_copy_required ? 'Required after submission' : 'Not required' }}</strong></div></div><div class="notice"><strong>Submission locks this draft.</strong><p>You will receive a UPS reference and downloadable acknowledgement. A reference is assigned only after a successful final submission.</p></div><button class="button primary" :disabled="submitting || !draft.declaration?.accepted" @click="submit">{{ submitting ? 'Submitting securely…' : 'Submit final application' }}</button></div>
-      <div v-else><p class="eyebrow">{{ activeSection }}</p><h2>{{ activeSection.replaceAll('_', ' ') }}</h2><label>Information<textarea v-model="draft[activeSection].notes" rows="8" /></label></div>
+      <div v-else><p class="eyebrow">{{ activeSection }}</p><h2>{{ activeSection.replaceAll('_', ' ') }}</h2><label>Information<textarea v-model="activeFields.notes" rows="8" /></label></div>
     </div>
   </section>
   <p v-else-if="!error" class="content-section">Loading application…</p>

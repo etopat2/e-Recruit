@@ -4,14 +4,16 @@ import StatusBadge from '../components/StatusBadge.vue'
 import { api, jsonBody } from '../lib/api'
 
 interface SelectionRun { id: string; run_number: number; mode: string; status: string; input_fingerprint: string; output_fingerprint: string; outcomes_count?: number }
-const runs = ref<SelectionRun[]>([]); const result = ref<Record<string, any> | null>(null); const error = ref(''); const notice = ref(''); const busy = ref(false)
+interface SelectionOutcome { id: string; application_id: string; position: number; outcome: string; score: number }
+interface SelectionResult { run?: SelectionRun; outcomes?: SelectionOutcome[] }
+const runs = ref<SelectionRun[]>([]); const result = ref<SelectionResult | null>(null); const error = ref(''); const notice = ref(''); const busy = ref(false)
 const form = reactive({ ranking_run_id: '', total_slots: 10, reserve_size: 3, mode: 'scenario', quotas: '{}', skill_reservations: '[]', tie_breakers: '[{"field":"submitted_at","direction":"asc"}]' })
 onMounted(load)
 async function load() { try { const response = await api<{ data: SelectionRun[] }>('/selection-runs'); runs.value = response.data } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Selection runs unavailable.' } }
 async function runSelection() {
   busy.value = true; error.value = ''
   try {
-    result.value = await api('/selection-runs', { method: 'POST', ...jsonBody({ ranking_run_id: form.ranking_run_id, mode: form.mode, policy: { total_slots: form.total_slots, reserve_size: form.reserve_size, bucket_field: 'bucket', quotas: JSON.parse(form.quotas), skill_reservations: JSON.parse(form.skill_reservations), tie_breakers: JSON.parse(form.tie_breakers), unfilled_quota_rule: 'general_merit' } }) })
+    result.value = await api<SelectionResult>('/selection-runs', { method: 'POST', ...jsonBody({ ranking_run_id: form.ranking_run_id, mode: form.mode, policy: { total_slots: form.total_slots, reserve_size: form.reserve_size, bucket_field: 'bucket', quotas: JSON.parse(form.quotas), skill_reservations: JSON.parse(form.skill_reservations), tie_breakers: JSON.parse(form.tie_breakers), unfilled_quota_rule: 'general_merit' } }) })
     notice.value = 'Reproducible selection scenario created. Certification remains a separate authorised action.'; await load()
   } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Selection run failed.' } finally { busy.value = false }
 }

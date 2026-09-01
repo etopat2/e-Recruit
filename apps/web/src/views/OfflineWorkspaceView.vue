@@ -71,9 +71,16 @@ async function sync() {
   syncBusy.value = true; error.value = ''
   try {
     const pending = await offlineDb.events.where('state').equals('pending').toArray()
-    const eventsToSend = await Promise.all(pending.map(async ({ packageId: _packageId, state: _state, error: _error, sealedPayload, ...event }) => ({
-      ...event,
-      payload: event.payload || (sealedPayload ? await openValue<Record<string, unknown>>(sealedPayload) : {}),
+    const eventsToSend = await Promise.all(pending.map(async (event) => ({
+      id: event.id,
+      entity_type: event.entity_type,
+      entity_id: event.entity_id,
+      action_type: event.action_type,
+      payload_schema_version: event.payload_schema_version,
+      payload: event.payload || (event.sealedPayload ? await openValue<Record<string, unknown>>(event.sealedPayload) : {}),
+      base_entity_version: event.base_entity_version,
+      local_sequence: event.local_sequence,
+      local_timestamp: event.local_timestamp,
     })))
     const response = await api<{ acknowledgements: Array<{ event_id: string; state: OfflineEvent['state']; error?: string }>; package_status: string }>(`/offline/packages/${packageId.value}/sync`, {
       method: 'POST',
