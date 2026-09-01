@@ -52,7 +52,7 @@ test('offline score remains encrypted locally across reload and reconciles once'
   await staffSession(page)
   await page.route('**/api/v1/offline/devices', async (route) => route.fulfill({ status: 201, json: { device: { id: 'device-1' } } }))
   await page.route('**/api/v1/offline/packages', async (route) => route.fulfill({ status: 201, json: {
-    package: { id: 'pack-1', manifest_fingerprint: 'a'.repeat(64), expires_at: '2099-01-01T00:00:00Z' },
+    package: { id: 'pack-1', pack_type: 'score_capture', status: 'active', manifest: {}, manifest_fingerprint: 'a'.repeat(64), expires_at: '2099-01-01T00:00:00Z' },
     server_records: [{ entity_type: 'assessment_score', entity_id: 'score-1', server_version: 1, payload: { application_reference: 'UPS/SYNTHETIC', maximum_mark: 100 } }],
     server_time: '2026-09-01T00:00:00Z',
   } }))
@@ -63,18 +63,18 @@ test('offline score remains encrypted locally across reload and reconciles once'
 
   await page.goto('/field/offline')
   await page.getByRole('button', { name: 'Register this device' }).click()
-  await page.getByLabel('Assessment score record ID(s)').fill('score-1')
+  await page.getByLabel('Scoped entity IDs').fill('score-1')
   await page.getByRole('button', { name: 'Issue scoped pack' }).click()
-  await expect(page.getByText('1 scoped record(s) available offline.')).toBeVisible()
+  await expect(page.getByText(/Assessment scoring · 1 record/)).toBeVisible()
   await page.evaluate(() => navigator.serviceWorker.ready)
   await context.setOffline(true)
   await page.getByRole('spinbutton', { name: 'Score', exact: true }).fill('78')
-  await page.getByRole('button', { name: 'Queue offline event' }).click()
+  await page.getByRole('button', { name: 'Queue encrypted event' }).click()
   await expect(page.getByText('1 awaiting acknowledgement')).toBeVisible()
   await page.reload()
   await expect(page.getByText('1 awaiting acknowledgement')).toBeVisible()
   await context.setOffline(false)
-  await page.getByLabel('Final sync: reconcile this pack').check()
+  await page.getByLabel('Final sync: reconcile and purge').check()
   await page.getByRole('button', { name: 'Synchronise now' }).click()
-  await expect(page.getByText('Every event was acknowledged and this pack is reconciled.')).toBeVisible()
+  await expect(page.getByText('Every event was acknowledged. The reconciled encrypted pack was purged from this browser.')).toBeVisible()
 })

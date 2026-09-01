@@ -101,10 +101,14 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('panels/{panel}/close', [AssessmentController::class, 'closePanel'])->name('panels.close');
 
             Route::post('offline/devices', [OfflineSyncController::class, 'registerDevice'])->name('offline.devices.store');
+            Route::post('offline/devices/{device}/revoke', [OfflineSyncController::class, 'revokeDevice'])->name('offline.devices.revoke');
             Route::post('offline/packages', [OfflineSyncController::class, 'issue'])->name('offline.packages.store');
             Route::get('offline/packages/{offlinePackage}', [OfflineSyncController::class, 'show'])->name('offline.packages.show');
+            Route::get('offline/packages/{offlinePackage}/changes', [OfflineSyncController::class, 'changes'])->name('offline.packages.changes');
+            Route::post('offline/packages/{offlinePackage}/revoke', [OfflineSyncController::class, 'revokePackage'])->name('offline.packages.revoke');
             Route::post('offline/packages/{offlinePackage}/sync', [OfflineSyncController::class, 'sync'])->name('offline.packages.sync');
             Route::post('offline/conflicts/{conflict}/resolve', [OfflineSyncController::class, 'resolveConflict'])->name('offline.conflicts.resolve');
+            Route::get('operations/offline', [OfflineSyncController::class, 'operations'])->name('operations.offline');
 
             Route::post('rankings', [SelectionController::class, 'rank'])->name('rankings.store');
             Route::get('selection-runs', [SelectionController::class, 'index'])->name('selection.index');

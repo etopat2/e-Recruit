@@ -23,7 +23,7 @@ class OfflineSyncTest extends TestCase
     public function test_offline_score_and_attendance_events_are_idempotent_and_versioned(): void
     {
         $fixture = $this->recruitmentFixture();
-        $user = User::factory()->create(['user_type' => 'panel_member']);
+        $user = User::factory()->create(['user_type' => 'panel_head']);
         $regionId = (string) Str::ulid();
         $centreId = (string) Str::ulid();
         $sessionId = (string) Str::ulid();
@@ -31,6 +31,7 @@ class OfflineSyncTest extends TestCase
         DB::table('recruitment_centres')->insert(['id' => $centreId, 'prison_region_id' => $regionId, 'code' => 'KLA', 'name' => 'Kampala', 'address' => 'Kampala', 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
         DB::table('centre_sessions')->insert(['id' => $sessionId, 'recruitment_centre_id' => $centreId, 'recruitment_post_id' => $fixture['post']->id, 'code' => 'AM', 'session_date' => now()->toDateString(), 'reporting_time' => '08:00', 'capacity' => 20, 'status' => 'scheduled', 'created_at' => now(), 'updated_at' => now()]);
         $panel = Panel::query()->create(['centre_session_id' => $sessionId, 'code' => 'P1', 'name' => 'Panel 1', 'capacity' => 20, 'status' => 'open']);
+        $user->scopes()->create(['scope_type' => 'panel', 'scope_id' => $panel->id, 'allowed_tasks' => ['decision:score', 'decision:attendance']]);
         $assignment = InterviewAssignment::query()->create(['application_id' => $fixture['application']->id, 'centre_session_id' => $sessionId, 'panel_id' => $panel->id, 'assignment_order' => 1, 'algorithm_version' => 'test', 'input_fingerprint' => str_repeat('a', 64)]);
         DB::table('attendance_records')->insert([
             'id' => (string) Str::ulid(),

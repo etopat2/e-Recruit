@@ -43,6 +43,7 @@ export default defineConfig(({ mode }) => ({
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     // A single worker is reliable on low-memory CI runners and mirrors the
     // low-end devices targeted by the PWA without changing test semantics.
+    pool: 'threads',
     fileParallelism: false,
     maxWorkers: 1,
   },
