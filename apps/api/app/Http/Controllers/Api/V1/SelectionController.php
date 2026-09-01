@@ -36,10 +36,11 @@ class SelectionController extends Controller
             ->select('applications.id as application_id', 'applications.submitted_at', DB::raw('sum((assessment_scores.score / assessment_definitions.maximum_mark) * assessment_definitions.weight) as aggregate_score'))
             ->orderByDesc('aggregate_score')->orderBy('applications.submitted_at')->orderBy('applications.id')->get();
         abort_if($candidates->isEmpty(), 422, 'There are no complete submitted assessment scores to rank.');
-        $runNumber = ((int) DB::table('ranking_runs')->where('recruitment_post_id', $data['recruitment_post_id'])->max('run_number')) + 1;
         $snapshot = $candidates->map(fn ($candidate): array => (array) $candidate)->all();
         $id = (string) Str::ulid();
-        DB::transaction(function () use ($id, $data, $runNumber, $snapshot, $candidates, $canonicalJson, $request): void {
+        DB::transaction(function () use ($id, $data, $snapshot, $candidates, $canonicalJson, $request): void {
+            DB::table('recruitment_posts')->where('id', $data['recruitment_post_id'])->lockForUpdate()->firstOrFail();
+            $runNumber = ((int) DB::table('ranking_runs')->where('recruitment_post_id', $data['recruitment_post_id'])->max('run_number')) + 1;
             DB::table('ranking_runs')->insert([
                 'id' => $id,
                 'recruitment_post_id' => $data['recruitment_post_id'],
@@ -120,7 +121,8 @@ class SelectionController extends Controller
         $ready = $offlineReadiness['open_conflicts'] === 0 && $offlineReadiness['unsynced_packages'] === 0;
         $result = $selectionService->run($candidates, $data['policy'], $ready);
         $run = DB::transaction(function () use ($rankingRun, $data, $result, $offlineReadiness, $canonicalJson, $request): SelectionRun {
-            $runNumber = ((int) SelectionRun::query()->where('recruitment_post_id', $rankingRun->recruitment_post_id)->lockForUpdate()->max('run_number')) + 1;
+            DB::table('recruitment_posts')->where('id', $rankingRun->recruitment_post_id)->lockForUpdate()->firstOrFail();
+            $runNumber = ((int) SelectionRun::query()->where('recruitment_post_id', $rankingRun->recruitment_post_id)->max('run_number')) + 1;
             $run = SelectionRun::query()->create([
                 'ranking_run_id' => $rankingRun->id,
                 'recruitment_post_id' => $rankingRun->recruitment_post_id,

@@ -34,11 +34,14 @@ class HealthController extends Controller
             'storage' => $this->check(function (): bool {
                 $disk = Storage::disk(config('filesystems.default'));
                 $path = '.health/'.Str::uuid();
-                $disk->put($path, 'ready');
-                $ready = $disk->exists($path) && $disk->get($path) === 'ready';
-                $disk->delete($path);
 
-                return $ready;
+                try {
+                    return $disk->put($path, 'ready')
+                        && $disk->exists($path)
+                        && $disk->get($path) === 'ready';
+                } finally {
+                    $disk->delete($path);
+                }
             }),
         ];
         $ready = collect($checks)->every(fn (array $check): bool => $check['ok']);
@@ -75,9 +78,11 @@ class HealthController extends Controller
     private function check(callable $callback): array
     {
         try {
-            $callback();
+            $result = $callback();
 
-            return ['ok' => true];
+            return $result === false
+                ? ['ok' => false, 'error' => 'CheckFailed']
+                : ['ok' => true];
         } catch (Throwable $exception) {
             return ['ok' => false, 'error' => class_basename($exception)];
         }

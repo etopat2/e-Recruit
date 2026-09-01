@@ -27,7 +27,7 @@ return new class extends Migration
             $table->ulid('id')->primary();
             $table->foreignUlid('application_id')->constrained()->restrictOnDelete();
             $table->foreignUlid('upload_session_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignUlid('replaces_document_id')->nullable()->constrained('documents')->nullOnDelete();
+            $table->ulid('replaces_document_id')->nullable();
             $table->string('document_type', 80)->index();
             $table->unsignedSmallInteger('version')->default(1);
             $table->string('original_filename');
@@ -46,6 +46,10 @@ return new class extends Migration
             $table->timestampTz('uploaded_at');
             $table->timestampsTz();
             $table->unique(['application_id', 'document_type', 'version']);
+        });
+
+        Schema::table('documents', function (Blueprint $table) {
+            $table->foreign('replaces_document_id')->references('id')->on('documents')->nullOnDelete();
         });
 
         Schema::create('document_processing_jobs', function (Blueprint $table) {
@@ -111,7 +115,7 @@ return new class extends Migration
         Schema::create('verified_values', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->foreignUlid('application_id')->constrained()->restrictOnDelete();
-            $table->foreignUlid('supersedes_id')->nullable()->constrained('verified_values')->nullOnDelete();
+            $table->ulid('supersedes_id')->nullable();
             $table->string('field_key', 120);
             $table->json('verified_value');
             $table->json('evidence_references');
@@ -122,6 +126,10 @@ return new class extends Migration
             $table->boolean('current')->default(true);
             $table->timestampsTz();
             $table->index(['application_id', 'field_key', 'current']);
+        });
+
+        Schema::table('verified_values', function (Blueprint $table) {
+            $table->foreign('supersedes_id')->references('id')->on('verified_values')->nullOnDelete();
         });
 
         Schema::create('document_verifications', function (Blueprint $table) {

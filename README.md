@@ -1,6 +1,6 @@
 # Uganda Prisons Service e-Recruit
 
-UPS e-Recruit is a secure, campaign-configurable recruitment platform implemented from `Resources/UPS_e-Recruit_Codex_Prompts/00_MASTER_ORCHESTRATOR.md` through `20_FINAL_ACCEPTANCE_GO_LIVE.md` and the v1.0 system specification.
+UPS e-Recruit is a secure, campaign-configurable recruitment platform.
 
 ## Architecture
 

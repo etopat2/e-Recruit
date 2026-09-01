@@ -20,7 +20,7 @@ class OfflineSyncTest extends TestCase
     use CreatesRecruitmentFixtures;
     use RefreshDatabase;
 
-    public function test_event_uuid_is_idempotent_and_updates_a_versioned_score_once(): void
+    public function test_offline_score_and_attendance_events_are_idempotent_and_versioned(): void
     {
         $fixture = $this->recruitmentFixture();
         $user = User::factory()->create(['user_type' => 'panel_member']);
@@ -49,12 +49,46 @@ class OfflineSyncTest extends TestCase
         ];
         $conflict = app(OfflineSyncService::class)->push($package->fresh(), $user, [$conflictingEvent]);
 
+        $attendancePackage = OfflinePackage::query()->create([
+            'registered_device_id' => $deviceId,
+            'user_id' => $user->id,
+            'pack_type' => 'attendance',
+            'scope' => ['panel_id' => $panel->id],
+            'permitted_actions' => ['ATTENDANCE_RECORDED'],
+            'manifest' => ['entity_ids' => [$assignment->id]],
+            'manifest_fingerprint' => str_repeat('c', 64),
+            'status' => 'active',
+            'issued_at' => now(),
+            'expires_at' => now()->addHour(),
+            'outstanding_events' => 1,
+        ]);
+        $attendanceEvent = [
+            'id' => (string) Str::uuid(),
+            'entity_type' => 'interview_assignment',
+            'entity_id' => $assignment->id,
+            'action_type' => 'ATTENDANCE_RECORDED',
+            'payload_schema_version' => 1,
+            'payload' => ['status' => 'present'],
+            'base_entity_version' => 1,
+            'local_sequence' => 1,
+            'local_timestamp' => now()->toISOString(),
+        ];
+        $attendance = app(OfflineSyncService::class)->push($attendancePackage, $user, [$attendanceEvent]);
+        $duplicateAttendance = app(OfflineSyncService::class)->push($attendancePackage->fresh(), $user, [$attendanceEvent]);
+
         $this->assertSame('accepted', $first['acknowledgements'][0]['state']);
         $this->assertTrue($second['acknowledgements'][0]['duplicate']);
         $this->assertSame('77.00', $score->fresh()->score);
         $this->assertSame(2, $score->fresh()->entity_version);
         $this->assertSame('conflict', $conflict['acknowledgements'][0]['state']);
         $this->assertDatabaseHas('sync_conflicts', ['entity_id' => $score->id, 'field_key' => 'score', 'status' => 'open']);
-        $this->assertDatabaseCount('offline_events', 2);
+        $this->assertSame('accepted', $attendance['acknowledgements'][0]['state']);
+        $this->assertTrue($duplicateAttendance['acknowledgements'][0]['duplicate']);
+        $this->assertDatabaseHas('attendance_records', [
+            'interview_assignment_id' => $assignment->id,
+            'status' => 'present',
+            'entity_version' => 2,
+        ]);
+        $this->assertDatabaseCount('offline_events', 3);
     }
 }

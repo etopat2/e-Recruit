@@ -136,7 +136,10 @@ return new class extends Migration
 
         Schema::create('administrative_units', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->foreignUlid('parent_id')->nullable()->constrained('administrative_units')->restrictOnDelete();
+            // Add the self-reference after table creation. PostgreSQL validates
+            // an ALTER-based self FK before Laravel's inline primary-key DDL is
+            // visible when both are emitted from the same create blueprint.
+            $table->ulid('parent_id')->nullable();
             $table->string('code', 50)->unique();
             $table->string('name');
             $table->string('level', 30)->index();
@@ -145,6 +148,10 @@ return new class extends Migration
             $table->boolean('active')->default(true);
             $table->timestampsTz();
             $table->index(['parent_id', 'level', 'active']);
+        });
+
+        Schema::table('administrative_units', function (Blueprint $table) {
+            $table->foreign('parent_id')->references('id')->on('administrative_units')->restrictOnDelete();
         });
 
         Schema::create('prison_regions', function (Blueprint $table) {

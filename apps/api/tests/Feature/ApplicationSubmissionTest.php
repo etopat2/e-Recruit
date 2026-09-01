@@ -14,6 +14,28 @@ class ApplicationSubmissionTest extends TestCase
     use CreatesRecruitmentFixtures;
     use RefreshDatabase;
 
+    public function test_campaign_defined_draft_sections_are_retained(): void
+    {
+        $fixture = $this->recruitmentFixture();
+        Sanctum::actingAs($fixture['user']);
+        $draft = [
+            'personal' => ['full_name' => 'Amina Nabirye'],
+            'address' => ['district' => 'Kampala'],
+            'declaration' => ['criminal_record' => false],
+            'campaign_specific' => ['cadre_preference' => 'General duties'],
+        ];
+
+        $this->putJson("/api/v1/applications/{$fixture['application']->id}", [
+            'draft_data' => $draft,
+            'entity_version' => 1,
+        ])->assertSuccessful()
+            ->assertJsonPath('data.draft_data.address.district', 'Kampala')
+            ->assertJsonPath('data.draft_data.declaration.criminal_record', false)
+            ->assertJsonPath('data.draft_data.campaign_specific.cadre_preference', 'General duties');
+
+        $this->assertSame($draft, $fixture['application']->fresh()->draft_data);
+    }
+
     public function test_submission_is_atomic_idempotent_and_locks_the_draft(): void
     {
         Storage::fake('local');

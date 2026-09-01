@@ -41,5 +41,9 @@ export default defineConfig(({ mode }) => ({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+    // A single worker is reliable on low-memory CI runners and mirrors the
+    // low-end devices targeted by the PWA without changing test semantics.
+    fileParallelism: false,
+    maxWorkers: 1,
   },
 }))

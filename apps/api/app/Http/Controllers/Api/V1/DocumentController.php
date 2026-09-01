@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class DocumentController extends Controller
 {
@@ -63,19 +64,31 @@ class DocumentController extends Controller
         }
 
         $document = DB::transaction(function () use ($application, $data, $upload, $detectedMimeType, $allowedMimeTypes, $checksum, $request): Document {
+            // Lock the application row to serialise document version allocation.
+            // PostgreSQL rejects FOR UPDATE on aggregate queries, and locking the
+            // parent also protects the first upload where no document row exists.
+            Application::query()->whereKey($application->id)->lockForUpdate()->firstOrFail();
             $version = ((int) Document::query()
                 ->whereBelongsTo($application)
                 ->where('document_type', $data['document_type'])
-                ->lockForUpdate()
                 ->max('version')) + 1;
             $documentId = (string) Str::ulid();
             $extension = $allowedMimeTypes[$detectedMimeType];
             $path = "applications/{$application->id}/originals/{$documentId}.{$extension}";
             $stream = fopen($upload->getRealPath(), 'rb');
-            if ($stream === false || ! Storage::disk(config('erecruit.uploads.disk'))->put($path, $stream)) {
+            if ($stream === false) {
                 throw ValidationException::withMessages(['document' => 'The protected document store is unavailable. Try again.']);
             }
-            fclose($stream);
+            try {
+                if (! Storage::disk(config('erecruit.uploads.disk'))->put($path, $stream)) {
+                    throw new \RuntimeException('The document store did not acknowledge the write.');
+                }
+            } catch (Throwable $exception) {
+                report($exception);
+                throw ValidationException::withMessages(['document' => 'The protected document store is unavailable. Try again.']);
+            } finally {
+                fclose($stream);
+            }
 
             return Document::query()->create([
                 'id' => $documentId,

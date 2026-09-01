@@ -23,8 +23,12 @@ class StoreApplicationDraftRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'draft_data' => ['required', 'array'],
+            'draft_data' => ['required', 'array', 'max:50'],
+            // Campaigns define their own section keys. Validate and retain each
+            // configured section while keeping a bounded object shape.
+            'draft_data.*' => ['array', 'max:100'],
             'draft_data.personal' => ['sometimes', 'array'],
+            'draft_data.address' => ['sometimes', 'array'],
             'draft_data.origin' => ['sometimes', 'array'],
             'draft_data.residence' => ['sometimes', 'array'],
             'draft_data.education' => ['sometimes', 'array', 'max:20'],
@@ -32,6 +36,7 @@ class StoreApplicationDraftRequest extends FormRequest
             'draft_data.professional_registrations' => ['sometimes', 'array', 'max:20'],
             'draft_data.skills' => ['sometimes', 'array', 'max:30'],
             'draft_data.declarations' => ['sometimes', 'array'],
+            'draft_data.declaration' => ['sometimes', 'array'],
             'entity_version' => ['required', 'integer', 'min:1'],
         ];
     }

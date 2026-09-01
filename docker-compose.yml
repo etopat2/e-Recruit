@@ -29,7 +29,7 @@ services:
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping | grep PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -115,6 +115,7 @@ services:
       APP_ENV: local
       APP_DEBUG: "true"
       APP_URL: http://localhost:${APP_PORT:-8080}
+      PHP_CLI_SERVER_WORKERS: "4"
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -137,7 +138,7 @@ services:
       QUEUE_CONNECTION: database
       CACHE_STORE: redis
       SESSION_DRIVER: database
-    command: php artisan serve --host=0.0.0.0 --port=8000
+    command: php artisan serve --host=0.0.0.0 --port=8000 --no-reload
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -152,9 +153,13 @@ services:
       document-worker:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "php", "-r", "$$c=@file_get_contents('http://localhost:8000/api/v1/health/live'); exit($$c===false?1:0);"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "25", "http://127.0.0.1:8000/api/v1/health/live"]
+      interval: 30s
+      # Docker Desktop bind mounts can add several seconds of cold-start I/O on
+      # Windows. This is a development-only tolerance; production FPM keeps the
+      # stricter five-second health budget.
+      timeout: 30s
+      start_period: 90s
       retries: 20
     networks: [erecruit]
 
@@ -242,7 +247,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5173"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -260,7 +265,7 @@ services:
       web:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 20
