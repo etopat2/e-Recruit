@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CampaignController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EligibilityController;
+use App\Http\Controllers\Api\V1\GeographyController;
 use App\Http\Controllers\Api\V1\HardCopyController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\HelpdeskController;
@@ -61,6 +62,16 @@ Route::prefix('v1')->name('api.')->group(function (): void {
                 Route::post('campaigns/{campaign}/clone', [CampaignController::class, 'clone'])->name('campaigns.clone');
                 Route::post('campaigns/{campaign}/publish', [CampaignController::class, 'publish'])->name('campaigns.publish');
                 Route::post('campaigns/{campaign}/status', [CampaignController::class, 'changeStatus'])->name('campaigns.status');
+                Route::get('admin/geography', [GeographyController::class, 'index'])->name('admin.geography.index');
+                Route::post('admin/geography/units', [GeographyController::class, 'storeUnit'])->name('admin.geography.units.store');
+                Route::put('admin/geography/units/{unit}', [GeographyController::class, 'updateUnit'])->name('admin.geography.units.update');
+                Route::post('admin/geography/regions', [GeographyController::class, 'storeRegion'])->name('admin.geography.regions.store');
+                Route::post('admin/geography/centres', [GeographyController::class, 'storeCentre'])->name('admin.geography.centres.store');
+                Route::post('admin/geography/mappings', [GeographyController::class, 'storeMapping'])->name('admin.geography.mappings.store');
+                Route::get('admin/geography/unresolved', [GeographyController::class, 'unresolved'])->name('admin.geography.unresolved');
+                Route::post('admin/geography/unresolved/{unresolved}/resolve', [GeographyController::class, 'resolve'])->name('admin.geography.unresolved.resolve');
+                Route::get('admin/geography/templates/{type}', [GeographyController::class, 'template'])->name('admin.geography.templates.show');
+                Route::post('admin/geography/imports/{type}', [GeographyController::class, 'import'])->middleware('throttle:uploads')->name('admin.geography.imports.store');
             });
 
             Route::get('applications/{application}/verification-workbench', [VerificationController::class, 'show'])->name('verification.show');

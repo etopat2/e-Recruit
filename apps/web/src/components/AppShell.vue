@@ -28,6 +28,7 @@ async function signOut() {
       <template v-if="session.authenticated">
         <RouterLink to="/dashboard">Dashboard</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/campaigns">Campaigns</RouterLink>
+        <RouterLink v-if="staffNav" to="/staff/geography">Geography</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/selection">Selection</RouterLink>
         <RouterLink v-if="staffNav" to="/field/offline">Field mode</RouterLink>
         <RouterLink to="/help">Help</RouterLink>
