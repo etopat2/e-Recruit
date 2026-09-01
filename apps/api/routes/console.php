@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('sanctum:prune-expired --hours=24')->dailyAt('02:10')->onOneServer();
 Schedule::command('queue:prune-failed --hours=336')->dailyAt('02:20')->onOneServer();
+Schedule::command('uploads:prune-expired')->hourly()->onOneServer();

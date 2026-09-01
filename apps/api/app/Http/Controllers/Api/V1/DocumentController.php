@@ -2,24 +2,20 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Contracts\MalwareScanner;
 use App\Http\Controllers\Controller;
-use App\Jobs\ProcessDocumentJob;
+use App\Http\Resources\DocumentResource;
 use App\Models\Application;
 use App\Models\Document;
 use App\Services\AuditService;
+use App\Services\DocumentIngestionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Throwable;
 
 class DocumentController extends Controller
 {
-    public function store(Request $request, Application $application, MalwareScanner $malwareScanner, AuditService $audit): JsonResponse
+    public function store(Request $request, Application $application, DocumentIngestionService $ingestion, AuditService $audit): JsonResponse
     {
         $this->authorize('update', $application);
         $maximumKilobytes = (int) ceil(config('erecruit.uploads.maximum_bytes') / 1024);
@@ -29,92 +25,21 @@ class DocumentController extends Controller
             'replaces_document_id' => ['nullable', 'exists:documents,id'],
         ]);
         $upload = $request->file('document');
-        $detectedMimeType = (new \finfo(FILEINFO_MIME_TYPE))->file($upload->getRealPath());
-        $allowedMimeTypes = config('erecruit.uploads.allowed_mime_types');
-        if (! is_string($detectedMimeType) || ! isset($allowedMimeTypes[$detectedMimeType])) {
-            throw ValidationException::withMessages(['document' => 'The file signature does not match an approved PDF or image format.']);
+        $result = $ingestion->ingest(
+            $application,
+            $request->user(),
+            $data['document_type'],
+            $upload->getRealPath(),
+            $upload->getClientOriginalName(),
+            $upload->getClientMimeType(),
+            $data['replaces_document_id'] ?? null,
+        );
+        $payload = (new DocumentResource($result['document']))->resolve($request);
+        if (! $result['duplicate']) {
+            $audit->record('document.uploaded', $result['document'], actor: $request->user(), after: $payload);
         }
 
-        $requirement = DB::table('campaign_document_requirements')
-            ->where('recruitment_post_id', $application->recruitment_post_id)
-            ->where('document_type', $data['document_type'])
-            ->orderByDesc('created_at')
-            ->first();
-        if ($requirement !== null) {
-            $extensions = json_decode($requirement->allowed_extensions, true, 512, JSON_THROW_ON_ERROR);
-            if (! in_array($allowedMimeTypes[$detectedMimeType], $extensions, true)
-                || $upload->getSize() > ((int) $requirement->maximum_size_kb * 1024)) {
-                throw ValidationException::withMessages(['document' => 'The file does not meet this campaign document rule.']);
-            }
-        }
-
-        $checksum = hash_file('sha256', $upload->getRealPath());
-        $existing = Document::query()
-            ->whereBelongsTo($application)
-            ->where('document_type', $data['document_type'])
-            ->where('sha256', $checksum)
-            ->first();
-        if ($existing !== null) {
-            return response()->json(['document' => $this->documentPayload($existing), 'duplicate' => true]);
-        }
-
-        $scan = $malwareScanner->scan($upload->getRealPath());
-        if ($scan['status'] !== 'clean') {
-            throw ValidationException::withMessages(['document' => 'The file failed malware screening and was not accepted.']);
-        }
-
-        $document = DB::transaction(function () use ($application, $data, $upload, $detectedMimeType, $allowedMimeTypes, $checksum, $request): Document {
-            // Lock the application row to serialise document version allocation.
-            // PostgreSQL rejects FOR UPDATE on aggregate queries, and locking the
-            // parent also protects the first upload where no document row exists.
-            Application::query()->whereKey($application->id)->lockForUpdate()->firstOrFail();
-            $version = ((int) Document::query()
-                ->whereBelongsTo($application)
-                ->where('document_type', $data['document_type'])
-                ->max('version')) + 1;
-            $documentId = (string) Str::ulid();
-            $extension = $allowedMimeTypes[$detectedMimeType];
-            $path = "applications/{$application->id}/originals/{$documentId}.{$extension}";
-            $stream = fopen($upload->getRealPath(), 'rb');
-            if ($stream === false) {
-                throw ValidationException::withMessages(['document' => 'The protected document store is unavailable. Try again.']);
-            }
-            try {
-                if (! Storage::disk(config('erecruit.uploads.disk'))->put($path, $stream)) {
-                    throw new \RuntimeException('The document store did not acknowledge the write.');
-                }
-            } catch (Throwable $exception) {
-                report($exception);
-                throw ValidationException::withMessages(['document' => 'The protected document store is unavailable. Try again.']);
-            } finally {
-                fclose($stream);
-            }
-
-            return Document::query()->create([
-                'id' => $documentId,
-                'application_id' => $application->id,
-                'replaces_document_id' => $data['replaces_document_id'] ?? null,
-                'document_type' => $data['document_type'],
-                'version' => $version,
-                'original_filename' => $upload->getClientOriginalName(),
-                'storage_disk' => config('erecruit.uploads.disk'),
-                'original_path' => $path,
-                'mime_type' => (string) $upload->getClientMimeType(),
-                'detected_mime_type' => $detectedMimeType,
-                'extension' => $extension,
-                'size_bytes' => $upload->getSize(),
-                'sha256' => $checksum,
-                'malware_status' => 'clean',
-                'processing_status' => 'pending',
-                'uploaded_by' => $request->user()->id,
-                'uploaded_at' => now(),
-            ]);
-        }, 3);
-
-        ProcessDocumentJob::dispatch($document->id)->afterCommit();
-        $audit->record('document.uploaded', $document, actor: $request->user(), after: $this->documentPayload($document));
-
-        return response()->json(['document' => $this->documentPayload($document), 'duplicate' => false], 201);
+        return response()->json(['document' => $payload, 'duplicate' => $result['duplicate']], $result['duplicate'] ? 200 : 201);
     }
 
     public function show(Document $document): JsonResponse
@@ -123,7 +48,7 @@ class DocumentController extends Controller
         $document->load('extraction');
 
         return response()->json(['document' => [
-            ...$this->documentPayload($document),
+            ...(new DocumentResource($document))->resolve(request()),
             'extractions' => $document->extraction,
         ]]);
     }
@@ -143,23 +68,5 @@ class DocumentController extends Controller
             'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
         ]);
-    }
-
-    /** @return array<string, mixed> */
-    private function documentPayload(Document $document): array
-    {
-        return [
-            'id' => $document->id,
-            'application_id' => $document->application_id,
-            'document_type' => $document->document_type,
-            'version' => $document->version,
-            'original_filename' => $document->original_filename,
-            'mime_type' => $document->detected_mime_type,
-            'size_bytes' => $document->size_bytes,
-            'sha256' => $document->sha256,
-            'malware_status' => $document->malware_status,
-            'processing_status' => $document->processing_status,
-            'quality_indicators' => $document->quality_indicators,
-        ];
     }
 }

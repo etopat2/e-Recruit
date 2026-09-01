@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\OfflineSyncController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SelectionController;
 use App\Http\Controllers\Api\V1\TrainingController;
+use App\Http\Controllers\Api\V1\UploadSessionController;
 use App\Http\Controllers\Api\V1\VerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +47,10 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('applications/{application}/submit', [ApplicationController::class, 'submit'])->middleware('throttle:status-lookup')->name('applications.submit');
             Route::get('applications/{application}/acknowledgement', [ApplicationController::class, 'acknowledgement'])->name('applications.acknowledgement');
             Route::post('applications/{application}/documents', [DocumentController::class, 'store'])->middleware('throttle:uploads')->name('documents.store');
+            Route::post('applications/{application}/upload-sessions', [UploadSessionController::class, 'store'])->middleware('throttle:uploads')->name('upload-sessions.store');
+            Route::get('upload-sessions/{uploadSession}', [UploadSessionController::class, 'show'])->name('upload-sessions.show');
+            Route::put('upload-sessions/{uploadSession}/chunks/{index}', [UploadSessionController::class, 'chunk'])->whereNumber('index')->middleware('throttle:uploads')->name('upload-sessions.chunks.store');
+            Route::post('upload-sessions/{uploadSession}/complete', [UploadSessionController::class, 'complete'])->middleware('throttle:uploads')->name('upload-sessions.complete');
             Route::get('documents/{document}', [DocumentController::class, 'show'])->name('documents.show');
             Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
 

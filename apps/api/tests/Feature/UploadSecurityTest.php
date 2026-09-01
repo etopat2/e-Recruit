@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Document;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\CreatesRecruitmentFixtures;
 use Tests\TestCase;
@@ -19,6 +21,22 @@ class UploadSecurityTest extends TestCase
     {
         Storage::fake('local');
         $fixture = $this->recruitmentFixture();
+        DB::table('campaign_document_requirements')->insert([
+            'id' => (string) Str::ulid(),
+            'recruitment_post_id' => $fixture['post']->id,
+            'campaign_version_id' => $fixture['version']->id,
+            'document_type' => 'national_id',
+            'label' => 'Synthetic national identification',
+            'required' => true,
+            'minimum_files' => 1,
+            'maximum_files' => 1,
+            'maximum_size_kb' => 5120,
+            'allowed_extensions' => json_encode(['pdf'], JSON_THROW_ON_ERROR),
+            'hard_copy_required' => true,
+            'original_required_at_interview' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         Sanctum::actingAs($fixture['user']);
         $file = UploadedFile::fake()->createWithContent(
             'identity.pdf',

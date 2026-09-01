@@ -25,7 +25,7 @@ const draft = reactive<ApplicationDraft>({
   declaration: { accepted: false },
 })
 const activeSection = ref('personal'); const saveState = ref<'saved' | 'saving' | 'offline' | 'conflict'>('saved')
-const error = ref(''); const uploadType = ref('national_id'); const uploadFile = ref<File | null>(null); const submitting = ref(false)
+const error = ref(''); const uploadType = ref('national_id'); const uploadFile = ref<File | null>(null); const uploadProgress = ref(0); const submitting = ref(false)
 const sections = computed(() => Object.keys(application.value?.post.sections || { personal: true, address: true, education: true, declaration: true }))
 const activeFields = computed<FormFields>(() => {
   const section = draft[activeSection.value]
@@ -80,11 +80,29 @@ function addEducation() {
 
 async function upload() {
   if (!application.value || !uploadFile.value) return
-  const body = new FormData(); body.append('document_type', uploadType.value); body.append('document', uploadFile.value)
+  const file = uploadFile.value; const chunkSize = 1024 * 1024
   try {
-    const response = await api<{ document: Record<string, unknown> }>(`/applications/${application.value.id}/documents`, { method: 'POST', body })
+    const idempotencyKey = await sha256(new TextEncoder().encode(`${application.value.id}:${uploadType.value}:${file.name}:${file.size}:${file.lastModified}`))
+    const initiated = await api<{ session: { id: string; chunk_size: number; expected_chunks: number; received_chunks: number[] } }>(`/applications/${application.value.id}/upload-sessions`, { method: 'POST', ...jsonBody({ document_type: uploadType.value, original_filename: file.name, expected_bytes: file.size, chunk_size: chunkSize, idempotency_key: idempotencyKey }) })
+    const received = new Set(initiated.session.received_chunks)
+    for (let index = 0; index < initiated.session.expected_chunks; index++) {
+      if (!received.has(index)) {
+        const part = file.slice(index * initiated.session.chunk_size, Math.min(file.size, (index + 1) * initiated.session.chunk_size))
+        const body = new FormData(); body.append('chunk', part, `${index}.part`); body.append('sha256', await sha256(new Uint8Array(await part.arrayBuffer())))
+        await api(`/upload-sessions/${initiated.session.id}/chunks/${index}`, { method: 'PUT', body })
+      }
+      uploadProgress.value = Math.round(((index + 1) / initiated.session.expected_chunks) * 100)
+    }
+    const response = await api<{ document: Record<string, unknown> }>(`/upload-sessions/${initiated.session.id}/complete`, { method: 'POST', ...jsonBody({ sha256: await sha256(new Uint8Array(await file.arrayBuffer())), client_mime_type: file.type }) })
     application.value.documents.push(response.document); uploadFile.value = null; error.value = ''
-  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Upload failed.' }
+  } catch (problem) { error.value = `${problem instanceof Error ? problem.message : 'Upload failed.'} Choose Upload again to resume acknowledged chunks.` }
+  finally { if (!uploadFile.value) uploadProgress.value = 0 }
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const copy = new Uint8Array(bytes.byteLength); copy.set(bytes)
+  const digest = await crypto.subtle.digest('SHA-256', copy.buffer)
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('')
 }
 
 async function submit() {
@@ -113,7 +131,7 @@ async function submit() {
       <form v-else-if="activeSection === 'address' || activeSection === 'origin' || activeSection === 'residence'" @submit.prevent><p class="eyebrow">Geography</p><h2>{{ activeSection }} details</h2><div class="field-grid"><label>District<input v-model="activeFields.district" required /></label><label>County<input v-model="activeFields.county" /></label><label>Sub-county<input v-model="activeFields.subcounty" /></label><label>Parish<input v-model="activeFields.parish" /></label><label class="wide">Village / physical address<textarea v-model="activeFields.physical_address" /></label></div></form>
       <div v-else-if="activeSection === 'education'"><p class="eyebrow">Qualifications</p><div class="section-heading"><h2>Education records</h2><button class="button secondary compact" @click="addEducation">Add qualification</button></div><article v-for="(record, index) in draft.education" :key="index" class="repeat-card"><div class="field-grid"><label>Level<input v-model="record.level" /></label><label>Institution<input v-model="record.institution" /></label><label>Completion year<input v-model="record.completion_year" inputmode="numeric" /></label><label>Result / class<input v-model="record.result" /></label></div><button class="text-button danger" @click="draft.education.splice(index, 1)">Remove</button></article><div v-if="!draft.education.length" class="empty-state compact"><p>Add each completed qualification.</p></div></div>
       <form v-else-if="activeSection === 'declaration' || activeSection === 'declarations'" @submit.prevent><p class="eyebrow">Declaration</p><h2>Confirm the information is yours</h2><label class="checkbox"><input v-model="draft.declaration.accepted" type="checkbox" /> <span>I declare that the information and documents I provide are complete and accurate. I understand that false information may disqualify my application.</span></label></form>
-      <form v-else-if="activeSection === 'documents'" @submit.prevent="upload"><p class="eyebrow">Protected evidence</p><h2>Upload clear documents</h2><p class="form-intro">PDF, JPEG, or PNG. Files are signature-checked, malware-screened, versioned, and kept in protected storage.</p><div class="upload-row"><label>Document type<select v-model="uploadType"><option value="national_id">National identification</option><option value="academic_certificate">Academic certificate</option><option value="passport_photo">Passport photograph</option><option value="skill_certificate">Skill certificate</option></select></label><label>Choose file<input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /></label><button class="button primary" :disabled="!uploadFile">Upload</button></div><ul class="document-list"><li v-for="document in application.documents" :key="String(document.id)"><span><strong>{{ document.document_type }}</strong><small>{{ document.filename }}</small></span><StatusBadge :status="String(document.processing_status)" /></li></ul></form>
+      <form v-else-if="activeSection === 'documents'" @submit.prevent="upload"><p class="eyebrow">Protected evidence</p><h2>Upload clear documents</h2><p class="form-intro">PDF, JPEG, or PNG. Files are uploaded in checksum-protected resumable chunks, signature-checked, malware-screened, versioned, and kept in protected storage.</p><div class="upload-row"><label>Document type<select v-model="uploadType"><option value="national_id">National identification</option><option value="academic_certificate">Academic certificate</option><option value="passport_photo">Passport photograph</option><option value="skill_certificate">Skill certificate</option></select></label><label>Choose file<input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /></label><button class="button primary" :disabled="!uploadFile">{{ uploadProgress ? `Uploading ${uploadProgress}%` : 'Upload' }}</button></div><progress v-if="uploadProgress" :value="uploadProgress" max="100">{{ uploadProgress }}%</progress><ul class="document-list"><li v-for="document in application.documents" :key="String(document.id)"><span><strong>{{ document.document_type }}</strong><small>{{ document.original_filename }}</small></span><StatusBadge :status="String(document.processing_status)" /></li></ul></form>
       <div v-else-if="activeSection === 'review'"><p class="eyebrow">Final review</p><h2>Submit your application</h2><div class="review-summary"><div><span>Sections complete</span><strong>{{ completion }}%</strong></div><div><span>Documents uploaded</span><strong>{{ application.documents.length }}</strong></div><div><span>Hard copies</span><strong>{{ application.post.hard_copy_required ? 'Required after submission' : 'Not required' }}</strong></div></div><div class="notice"><strong>Submission locks this draft.</strong><p>You will receive a UPS reference and downloadable acknowledgement. A reference is assigned only after a successful final submission.</p></div><button class="button primary" :disabled="submitting || !draft.declaration?.accepted" @click="submit">{{ submitting ? 'Submitting securely…' : 'Submit final application' }}</button></div>
       <div v-else><p class="eyebrow">{{ activeSection }}</p><h2>{{ activeSection.replaceAll('_', ' ') }}</h2><label>Information<textarea v-model="activeFields.notes" rows="8" /></label></div>
     </div>
