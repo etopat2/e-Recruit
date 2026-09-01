@@ -55,9 +55,12 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('applications/{application}/appeals', [HelpdeskController::class, 'appeal'])->name('appeals.store');
 
             Route::middleware('role:hq_recruitment_administrator,system_administrator')->group(function (): void {
+                Route::get('admin/campaigns', [CampaignController::class, 'adminIndex'])->name('admin.campaigns.index');
                 Route::post('campaigns', [CampaignController::class, 'store'])->name('campaigns.store');
                 Route::put('campaigns/{campaign}', [CampaignController::class, 'update'])->name('campaigns.update');
+                Route::post('campaigns/{campaign}/clone', [CampaignController::class, 'clone'])->name('campaigns.clone');
                 Route::post('campaigns/{campaign}/publish', [CampaignController::class, 'publish'])->name('campaigns.publish');
+                Route::post('campaigns/{campaign}/status', [CampaignController::class, 'changeStatus'])->name('campaigns.status');
             });
 
             Route::get('applications/{application}/verification-workbench', [VerificationController::class, 'show'])->name('verification.show');

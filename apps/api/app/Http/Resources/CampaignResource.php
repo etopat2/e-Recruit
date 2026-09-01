@@ -37,6 +37,10 @@ class CampaignResource extends JsonResource
                 'selection_rules' => $post->selection_configuration,
                 'lc_source_policy' => $post->lc_source_policy,
                 'hard_copy_required' => $post->hard_copy_required,
+                'document_requirements' => $post->relationLoaded('documentRequirements')
+                    ? $post->documentRequirements
+                    : [],
+                'stages' => $post->relationLoaded('stages') ? $post->stages : [],
                 'assessment_definitions' => $post->relationLoaded('assessmentDefinitions')
                     ? $post->assessmentDefinitions
                     : [],

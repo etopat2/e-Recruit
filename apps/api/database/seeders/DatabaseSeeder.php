@@ -144,6 +144,51 @@ class DatabaseSeeder extends Seeder
                 'updated_at' => now(),
             ]);
         }
+        foreach ([
+            ['application', 'Application', 1],
+            ['hard_copy', 'Hard-copy reception', 2],
+            ['verification', 'Verification', 3],
+            ['eligibility', 'Eligibility', 4],
+            ['interview', 'Interview and assessment', 5],
+            ['selection', 'Selection', 6],
+            ['medical', 'Medical', 7],
+            ['training', 'Training intake', 8],
+        ] as [$stageCode, $stageName, $sequence]) {
+            $stageKey = [
+                'recruitment_post_id' => $post->id,
+                'campaign_version_id' => $version->id,
+                'stage_code' => $stageCode,
+            ];
+            DB::table('campaign_stages')->updateOrInsert($stageKey, [
+                'id' => DB::table('campaign_stages')->where($stageKey)->value('id') ?? (string) Str::ulid(),
+                'name' => $stageName,
+                'sequence' => $sequence,
+                'required' => true,
+                'configuration' => json_encode([], JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        $assessmentKey = [
+            'recruitment_post_id' => $post->id,
+            'campaign_version_id' => $version->id,
+            'code' => 'INTERVIEW',
+        ];
+        DB::table('assessment_definitions')->updateOrInsert($assessmentKey, [
+            'id' => DB::table('assessment_definitions')->where($assessmentKey)->value('id') ?? (string) Str::ulid(),
+            'name' => 'Oral Interview',
+            'component_type' => 'oral_interview',
+            'maximum_mark' => 100,
+            'pass_mark' => 50,
+            'weight' => 100,
+            'mandatory' => true,
+            'assessor_model' => 'independent',
+            'aggregation_method' => 'average',
+            'divergence_threshold' => 20,
+            'blind_scoring' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         foreach ([['DRIVER', 'Driving'], ['ICT', 'Information and Communication Technology'], ['MEDICAL', 'Medical']] as [$code, $name]) {
             $skillId = DB::table('skill_categories')->where('code', $code)->value('id') ?? (string) Str::ulid();
             DB::table('skill_categories')->updateOrInsert(['code' => $code], [

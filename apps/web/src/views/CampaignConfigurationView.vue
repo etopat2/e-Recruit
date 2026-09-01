@@ -14,12 +14,19 @@ const validation = computed(() => [
 const publishable = computed(() => validation.value.every(([, valid]) => valid))
 function validJson(value: string) { try { JSON.parse(value); return true } catch { return false } }
 onMounted(load)
-async function load() { const response = await api<{ data: Campaign[] }>('/campaigns'); campaigns.value = response.data }
+async function load() { const response = await api<{ data: Campaign[] }>('/admin/campaigns'); campaigns.value = response.data }
 async function createCampaign() {
   if (!publishable.value) return
   busy.value = true; error.value = ''
   try {
-    const payload = { code: form.code, name: form.name, year: form.year, timezone: 'Africa/Kampala', opens_at: form.opens_at, closes_at: form.closes_at, hard_copy_deadline_at: form.hard_copy_deadline_at || null, age_cutoff_date: form.age_cutoff_date || null, privacy_notice: { version: `${form.code}-privacy-v1`, summary: 'Recruitment processing and accountability notice.' }, appeals_enabled: form.appeals_enabled, posts: [{ code: form.post_code, name: form.post_name, description: '', reference_prefix: form.reference_prefix, section_configuration: { personal: { required: true }, address: { required: true }, education: { required: true }, declaration: { required: true } }, eligibility_configuration: JSON.parse(form.eligibility), selection_configuration: JSON.parse(form.selection), lc_source_policy: 'origin_or_residence', hard_copy_required: form.hard_copy_required, active: true }] }
+    const payload = { code: form.code, name: form.name, year: form.year, timezone: 'Africa/Kampala', opens_at: form.opens_at, closes_at: form.closes_at, hard_copy_deadline_at: form.hard_copy_deadline_at || null, age_cutoff_date: form.age_cutoff_date || null, privacy_notice: { version: `${form.code}-privacy-v1`, summary: 'Recruitment processing and accountability notice.' }, appeals_enabled: form.appeals_enabled, posts: [{ code: form.post_code, name: form.post_name, description: '', reference_prefix: form.reference_prefix, section_configuration: { personal: { required: true }, address: { required: true }, education: { required: true }, declaration: { required: true } }, eligibility_configuration: JSON.parse(form.eligibility), selection_configuration: JSON.parse(form.selection), lc_source_policy: 'origin_or_residence', hard_copy_required: form.hard_copy_required, active: true, document_requirements: [
+      { document_type: 'national_id', label: 'National identification', required: true, minimum_files: 1, maximum_files: 1, maximum_size_kb: 5120, allowed_extensions: ['pdf', 'jpg', 'jpeg', 'png'], hard_copy_required: form.hard_copy_required, original_required_at_interview: true, extraction_profile: { fields: ['name', 'nin', 'dob'] } },
+      { document_type: 'academic_certificate', label: 'Academic certificate', required: true, minimum_files: 1, maximum_files: 3, maximum_size_kb: 5120, allowed_extensions: ['pdf', 'jpg', 'jpeg', 'png'], hard_copy_required: form.hard_copy_required, original_required_at_interview: true, extraction_profile: { fields: ['name', 'index_number', 'grade'] } },
+    ], stages: [
+      ['application', 'Application'], ['hard_copy', 'Hard-copy reception'], ['verification', 'Verification'], ['eligibility', 'Eligibility'], ['interview', 'Interview'], ['selection', 'Selection'], ['medical', 'Medical'], ['training', 'Training intake'],
+    ].map(([stage_code, name], index) => ({ stage_code, name, sequence: index + 1, required: true, configuration: {} })), assessment_definitions: [
+      { code: 'INTERVIEW', name: 'Oral interview', component_type: 'oral_interview', maximum_mark: 100, pass_mark: 50, weight: 100, mandatory: true, assessor_model: 'independent', aggregation_method: 'average', divergence_threshold: 20, blind_scoring: true },
+    ] }] }
     const response = await api<{ data: Campaign }>('/campaigns', { method: 'POST', ...jsonBody(payload) }); campaigns.value.unshift(response.data); message.value = 'Draft campaign and immutable version 1 created.'
   } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Campaign was not created.' } finally { busy.value = false }
 }

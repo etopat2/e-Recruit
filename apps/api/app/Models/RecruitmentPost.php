@@ -31,6 +31,16 @@ class RecruitmentPost extends Model
         return $this->hasMany(AssessmentDefinition::class);
     }
 
+    public function documentRequirements(): HasMany
+    {
+        return $this->hasMany(CampaignDocumentRequirement::class);
+    }
+
+    public function stages(): HasMany
+    {
+        return $this->hasMany(CampaignStage::class);
+    }
+
     protected function casts(): array
     {
         return [
