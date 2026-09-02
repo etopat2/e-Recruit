@@ -4,14 +4,15 @@ version = "1.0.0"
 description = "Bounded OCR and document quality worker for UPS e-Recruit"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "fastapi==0.116.1",
+  "fastapi==0.141.1",
   "numpy==2.2.6",
   "opencv-python-headless==4.12.0.88",
-  "pillow==11.3.0",
+  "pillow==12.3.0",
   "pydantic==2.11.7",
   "pydantic-settings==2.10.1",
   "pymupdf==1.26.3",
-  "python-multipart==0.0.20",
+  "python-multipart==0.0.32",
+  "starlette==1.6.0",
   "pytesseract==0.3.13",
   "uvicorn[standard]==0.35.0",
 ]
@@ -19,6 +20,7 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers --disable-warnings"
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py312"
