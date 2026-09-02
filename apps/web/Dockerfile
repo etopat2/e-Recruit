@@ -16,5 +16,7 @@ RUN npm run build
 FROM nginx:1.28.0-alpine AS production
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+RUN touch /run/nginx.pid \
+    && chown -R nginx:nginx /var/cache/nginx /etc/nginx/conf.d /run/nginx.pid
 USER nginx
 EXPOSE 8080

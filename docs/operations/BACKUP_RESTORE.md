@@ -26,7 +26,7 @@ RESTORE_DRILL_ACK=destroy-isolated-restore-stack infra/scripts/restore-test.sh /
 
 Before sign-off:
 
-1. Seed clearly synthetic applications and upload generated documents.
+1. Seed clearly synthetic applications and generated objects. In a non-production drill source only, the guarded command `RESTORE_DRILL_SEED_ACK=seed-clearly-synthetic-restore-data php artisan db:seed --class=RestoreDrillSeeder --force` creates one unmistakably synthetic application/document/object and is idempotent.
 2. Capture application/document/audit counts and representative object SHA-256 values.
 3. Take/copy/verify backup.
 4. Run the isolated reset/restore.

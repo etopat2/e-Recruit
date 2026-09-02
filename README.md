@@ -58,6 +58,6 @@ npm --prefix apps/web run test:e2e
 
 ## Operations and production
 
-Do not use development defaults in production. Supply secrets through the hosting platform, enable ClamAV, use TLS, configure real SMTP/SMS providers, import approved Uganda administrative data and campaign rules, and complete the external sign-offs listed in [Go-live checklist](docs/implementation/GO_LIVE_CHECKLIST.md).
+Do not use development defaults in production. Supply secrets through the hosting platform, enable ClamAV, use TLS, configure real SMTP/SMS providers, import approved Uganda administrative data and campaign rules, and complete the external sign-offs listed in the [go-live checklist](docs/deployment/GO_LIVE_CHECKLIST.md).
 
-Start with [Architecture](docs/ARCHITECTURE.md), [Security](docs/SECURITY.md), [Operations](docs/OPERATIONS.md), and [Final acceptance](docs/implementation/FINAL_ACCEPTANCE_REPORT.md).
+Start with [Architecture](docs/ARCHITECTURE.md), [Security](docs/SECURITY.md), [Operations](docs/OPERATIONS.md), and the [final implementation report](FINAL_IMPLEMENTATION_REPORT.md).

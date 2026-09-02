@@ -11,7 +11,9 @@ chmod 700 "$destination"
 compose=(docker compose -f "$compose_file")
 api_was_lowered=0
 workers_stopped=0
+object_helper=""
 restore_services() {
+  if [[ -n "$object_helper" ]]; then docker rm -f "$object_helper" >/dev/null 2>&1 || true; fi
   if [[ "$workers_stopped" == "1" ]]; then "${compose[@]}" start queue scheduler >/dev/null || true; fi
   if [[ "$api_was_lowered" == "1" ]]; then "${compose[@]}" exec -T api php artisan up >/dev/null || true; fi
 }
@@ -30,9 +32,14 @@ docker exec "$postgres_id" sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --for
 docker cp "${postgres_id}:/tmp/erecruit.dump" "${destination}/postgres.dump" >/dev/null
 docker exec "$postgres_id" rm -f /tmp/erecruit.dump
 
-docker exec "$minio_id" sh -ec 'tar -C /data -czf /tmp/objects.tar.gz .'
-docker cp "${minio_id}:/tmp/objects.tar.gz" "${destination}/objects.tar.gz" >/dev/null
-docker exec "$minio_id" rm -f /tmp/objects.tar.gz
+# The pinned MinIO image has no shell archive tools. Its data volume is
+# mounted read-only into the pinned PostgreSQL Alpine image for archiving.
+object_helper="ups-erecruit-object-backup-${stamp}"
+docker create --name "$object_helper" --volumes-from "${minio_id}:ro" postgres:17.6-alpine tar -C /data -czf /tmp/objects.tar.gz . >/dev/null
+docker start -a "$object_helper" >/dev/null
+docker cp "${object_helper}:/tmp/objects.tar.gz" "${destination}/objects.tar.gz" >/dev/null
+docker rm -f "$object_helper" >/dev/null
+object_helper=""
 
 {
   printf 'created_at_utc=%s\n' "$stamp"

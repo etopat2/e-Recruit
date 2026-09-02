@@ -39,4 +39,4 @@ reset:
 	docker compose exec api php artisan migrate:fresh --seed
 
 backup-dev:
-	powershell -NoProfile -ExecutionPolicy Bypass -File infra/scripts/backup-dev.ps1
+	powershell -NoProfile -ExecutionPolicy Bypass -File infra/scripts/backup.ps1 -ComposeFile docker-compose.yml
