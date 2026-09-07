@@ -21,13 +21,20 @@ Record CPU model/count, RAM, storage type, container limits, database settings, 
 The committed smoke profile exercises liveness, campaigns and optional authenticated list/dashboard traffic:
 
 ```sh
-docker run --rm --network host -i grafana/k6:0.54.0 run - \
-  -e BASE_URL=http://127.0.0.1:8080 \
+docker run --rm --network <compose-network> -i \
+  -e BASE_URL=http://<production-nginx-container>:8080 \
   -e PUBLIC_VUS=10 -e STAFF_VUS=2 -e DURATION=60s \
-  < tests/load/k6-smoke.js
+  -v "$PWD/tests/load:/scripts:ro" \
+  grafana/k6:0.54.0 run /scripts/k6-smoke.js
 ```
 
 Set `API_TOKEN` to a synthetic scoped staff token for authenticated traffic. Never put a production token in shell history or a result file. Separate soak/deadline-surge runs should progressively test 25, 100 and the infrastructure-approved VU level. Upload tests must use generated files; offline sync tests must use unique event UUIDs.
+
+`tests/load/php-fpm-nginx.conf` is a test-only ingress fixture for exercising the built production API (PHP-FPM) and web (Nginx) images on an isolated Docker network. It must not replace `infra/nginx/prod.conf` in deployment.
+
+## Latest local engineering result
+
+On 2026-09-08, the production API and web artifacts were run behind the test ingress with 10 public and 2 staff-profile VUs for 60 seconds. The profile completed 1,628 requests/checks with 0% failures, average 192.65 ms, p95 452.61 ms and maximum 1.14 seconds. This passes the committed local smoke thresholds. It is not evidence of national capacity: the approved staging hardware still requires the 50k/150k dataset, authenticated traffic, uploads, OCR throughput, deadline surge and soak profiles.
 
 ## Queue and dependency exercises
 

@@ -15,3 +15,12 @@
 - Formal UPS signatories, letterhead wording, privacy/retention policy, centre selection and final colour references.
 
 Synthetic/demo values will be visibly labelled and cannot be represented as production policy.
+
+## Residual release gates
+
+- The automated evidence was produced on a developer workstation with synthetic data. Approved staging must repeat load/soak/OCR throughput and restore tests at the agreed 50k/150k scale and record infrastructure capacity.
+- Automated axe coverage does not replace manual keyboard, screen-reader, reflow/zoom and user-language validation.
+- OWASP baseline/dependency/container scanning does not replace an independent authenticated penetration test or DPIA.
+- The malware interface and failure behavior are implemented; an enabled ClamAV service and EICAR exercise remain staging requirements.
+- Offline encryption, expiry, idempotency and two-context conflict handling are tested in software; managed-device and real-network field drills remain required.
+- Production is a NO-GO until the owners in `docs/deployment/GO_LIVE_CHECKLIST.md` provide evidence and signatures.

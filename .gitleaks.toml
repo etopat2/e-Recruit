@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known synthetic credentials shown only in vendored Laravel security guidance"
+paths = [
+  '''^apps/api/\.agents/skills/laravel-best-practices/rules/config\.md$''',
+  '''^apps/api/\.claude/skills/laravel-best-practices/rules/config\.md$''',
+]

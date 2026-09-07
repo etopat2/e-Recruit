@@ -1,6 +1,6 @@
 # Security and privacy review
 
-Reviewed against prompt 16/20 on 2026-09-01. This is an implementation review, not an independent penetration-test attestation.
+Reviewed against prompts 16 and 20 on 2026-09-08. This is an implementation review, not an independent penetration-test attestation.
 
 | Control | Evidence | Result |
 |---|---|---|
@@ -14,9 +14,12 @@ Reviewed against prompt 16/20 on 2026-09-01. This is an implementation review, n
 | Audit | Redacted hash-linked events, correlation IDs, approval references, integrity flags | Pass; external log retention required |
 | Browser boundary | Same-origin architecture, CSP, frame policy, permissions policy, secure-cookie production setting | Pass; TLS/HSTS supplied by approved ingress |
 | Logging | JSON stderr in production; no request-body logging; audit redaction deny-list | Pass; central sink configuration required |
-| Dependencies | Composer/npm/pip locks and CI audits | Automated scan must be rerun at release |
+| Dependencies | Composer, npm and pip audits; Gitleaks full-history scan; Trivy OS/language scan of all three final images | Pass at release-candidate commit; repeat in CI/deployment |
+| Passive DAST | OWASP ZAP 2.17.0 baseline: 0 failures, 1 CSP warning category, 59 passive rules passed | Pass with accepted inline-style rationale; authenticated external DAST required |
 | Privacy governance | Retention, legal hold, purge approval and purpose-bound export records | Implemented; UPS policy/DPIA values required |
 
 ## Required external assurance
 
 An authorised assessor must complete penetration testing, authenticated DAST, infrastructure/container scanning and a Data Protection Impact Assessment. High/critical findings, public document/NIN exposure, MFA bypass, cross-scope access, or an unverified restore are release blockers. Test only synthetic data and use the private UPS vulnerability channel.
+
+The remaining passive warning is `style-src 'unsafe-inline'`, retained for the dynamically positioned source-evidence overlay. The policy still restricts scripts and all other high-risk resource boundaries. This exception must be reviewed during the independent assessment and migrated to nonce/hash-compatible styling when practical.

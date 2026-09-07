@@ -64,6 +64,16 @@ class ProcessDocumentJob implements ShouldQueue
             );
             DB::table('extracted_fields')->where('document_extraction_id', $extraction->id)->delete();
             foreach ($response['structured_fields'] as $field) {
+                $box = $field['bounding_box'] ?? null;
+                $page = $box === null ? null : collect($response['pages'])->firstWhere('page', $box['page']);
+                $normalisedBox = $box === null ? null : [
+                    'page' => $box['page'],
+                    'x' => $page && $page['width'] > 0 ? $box['x'] / $page['width'] : $box['x'],
+                    'y' => $page && $page['height'] > 0 ? $box['y'] / $page['height'] : $box['y'],
+                    'width' => $page && $page['width'] > 0 ? $box['width'] / $page['width'] : $box['width'],
+                    'height' => $page && $page['height'] > 0 ? $box['height'] / $page['height'] : $box['height'],
+                    'coordinate_space' => $page ? 'normalised' : 'source_pixels',
+                ];
                 DB::table('extracted_fields')->insert([
                     'id' => (string) Str::ulid(),
                     'document_extraction_id' => $extraction->id,
@@ -72,7 +82,7 @@ class ProcessDocumentJob implements ShouldQueue
                     'normalised_value' => mb_strtoupper(trim($field['value'])),
                     'confidence' => $field['confidence'],
                     'page_number' => data_get($field, 'bounding_box.page'),
-                    'bounding_polygon' => isset($field['bounding_box']) ? json_encode($field['bounding_box'], JSON_THROW_ON_ERROR) : null,
+                    'bounding_polygon' => $normalisedBox === null ? null : json_encode($normalisedBox, JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);

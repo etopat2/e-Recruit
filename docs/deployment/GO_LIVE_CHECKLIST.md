@@ -2,6 +2,17 @@
 
 No unchecked release blocker may be inferred as approved. Add evidence links/change references next to each item.
 
+## Engineering evidence recorded 2026-09-08
+
+- [x] Clean migration/seed and full automated API/web/worker/contract suite passed.
+- [x] Desktop/mobile end-to-end suite passed 26/26, including source highlighting and true two-context offline conflict resolution.
+- [x] Dependency and Git-history secret scans passed after documented narrow false-positive handling.
+- [x] Final API, web and document-worker runtime images run unprivileged and have zero fixed HIGH/CRITICAL Trivy findings.
+- [x] Local production-path k6 smoke passed at 12 VUs: 1,628 requests, 0% failures, p95 452.61 ms.
+- [x] Local isolated database/object restore completed with matching counts and SHA-256 evidence.
+
+These are engineering prerequisites only. They do not check or supersede any owner-controlled item below. Evidence: `docs/testing/FINAL_TEST_REPORT.md` and `docs/operations/RESTORE_DRILL.md`.
+
 ## Infrastructure and security
 
 - [ ] Operations owner: immutable image digests/tag approved and production Compose/config reviewed.

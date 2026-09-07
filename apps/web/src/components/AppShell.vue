@@ -32,6 +32,7 @@ async function signOut() {
         <RouterLink v-if="staffNav" to="/staff/assessments">Assessments</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/governance">Governance</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/selection">Selection</RouterLink>
+        <RouterLink v-if="staffNav" to="/staff/operations">Operations</RouterLink>
         <RouterLink v-if="staffNav" to="/field/offline">Field mode</RouterLink>
         <RouterLink to="/help">Help</RouterLink>
         <button class="nav-action" type="button" @click="signOut">Sign out</button>

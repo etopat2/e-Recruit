@@ -1,35 +1,41 @@
-# UPS e-Recruit Implementation Status
+# UPS e-Recruit implementation status
 
-Updated: 2026-09-01 (Africa/Kampala)
+Updated: 2026-09-08 (Africa/Kampala)
 
 ## Baseline
 
 - [x] Prompt pack, implementation contract, and full v1.0 DOCX specification read.
-- [x] Repository inventoried: greenfield workspace containing specifications and brand assets only.
-- [x] Host constraints recorded: XAMPP PHP 8.0 is below baseline; Docker will provide the pinned PHP runtime.
-- [x] `Resources/logo.png` confirmed as the authorised source application logo.
+- [x] Modular monorepo implemented with Laravel, Vue PWA, Python document worker, PostgreSQL, Redis, MinIO and Nginx.
+- [x] Container-pinned runtimes replace the unsuitable host XAMPP PHP baseline.
+- [x] `Resources/logo.png` is the application logo and derived square favicon/PWA assets are installed.
+- [x] Clean database migration/seed, backup/restore, automated tests, image builds and health checks completed.
 
-## Phase gates
+## Software phase gates
 
-- [ ] 01 — Repository foundation
-- [ ] 02 — Domain data model
-- [ ] 03 — Auth, RBAC, MFA and audit
-- [ ] 04 — Campaign/geography configuration
-- [ ] 05 — Applicant PWA/application
-- [ ] 06 — Uploads and hard-copy reception
-- [ ] 07 — Document intelligence
-- [ ] 08 — Verification workbench
-- [ ] 09 — Eligibility engine
-- [ ] 10 — Interview centres/panels
-- [ ] 11 — Offline PWA/sync
-- [ ] 12 — Assessment/scoring
-- [ ] 13 — Ranking/quotas/selection
-- [ ] 14 — Medical/training
-- [ ] 15 — Notifications/helpdesk/reports
-- [ ] 16 — Security/integrity/retention
-- [ ] 17 — Automated test strategy
-- [ ] 18 — Performance/resilience/backup
-- [ ] 19 — Deployment/operations
-- [ ] 20 — Final acceptance/go-live
+- [x] 01 — Repository foundation
+- [x] 02 — Domain data model
+- [x] 03 — Auth, RBAC, MFA and audit
+- [x] 04 — Campaign/geography configuration
+- [x] 05 — Applicant PWA/application
+- [x] 06 — Uploads and hard-copy reception
+- [x] 07 — Document intelligence
+- [x] 08 — Verification workbench
+- [x] 09 — Eligibility engine
+- [x] 10 — Interview centres/panels
+- [x] 11 — Offline PWA/sync
+- [x] 12 — Assessment/scoring
+- [x] 13 — Ranking/quotas/selection
+- [x] 14 — Medical/training
+- [x] 15 — Notifications/helpdesk/reports
+- [x] 16 — Security/integrity/retention
+- [x] 17 — Automated test strategy
+- [x] 18 — Performance/resilience/backup implementation and local evidence
+- [x] 19 — Deployment/operations implementation
+- [x] 20 — Final implementation audit and engineering evidence pack
 
-Only phases with passing applicable automated gates are checked.
+## Release gate
+
+Engineering status: **staging/pilot release candidate**.
+Production decision: **NO-GO pending external sign-off**.
+
+The code implementation is complete for the specified v1.0 Must scope. Production credentials, authoritative policy/data, approved infrastructure, independent security/privacy/accessibility assessment, production-scale load/restore results, supervised field/clinical UAT and accountable GO signatures remain external gates. See `docs/testing/FINAL_TEST_REPORT.md` and `docs/deployment/GO_LIVE_CHECKLIST.md`.
