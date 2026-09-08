@@ -8,6 +8,7 @@ const session = useSessionStore()
 const router = useRouter()
 const open = ref(false)
 const staffNav = computed(() => session.isStaff)
+const technicalAdmin = computed(() => session.user?.user_type === 'system_administrator')
 async function signOut() {
   await session.logout()
   await router.push('/')
@@ -33,6 +34,7 @@ async function signOut() {
         <RouterLink v-if="staffNav" to="/staff/governance">Governance</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/selection">Selection</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/operations">Operations</RouterLink>
+        <RouterLink v-if="technicalAdmin" to="/staff/users">Users</RouterLink>
         <RouterLink v-if="staffNav" to="/field/offline">Field mode</RouterLink>
         <RouterLink to="/help">Help</RouterLink>
         <button class="nav-action" type="button" @click="signOut">Sign out</button>

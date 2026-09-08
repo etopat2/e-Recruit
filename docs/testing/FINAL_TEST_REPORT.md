@@ -12,22 +12,22 @@ The implemented release candidate passes the automated functional, browser, cont
 
 | Gate | Command/profile | Result |
 |---|---|---|
-| Laravel feature/unit suite | `docker compose exec -T api vendor/bin/phpunit --configuration=phpunit.xml` | PASS: 46 tests, 273 assertions, 2m53s |
-| PHP formatting | `docker compose exec -T api vendor/bin/pint --test` | PASS: 167 files |
+| Laravel feature/unit suite | `docker compose exec -T api php artisan test --compact` | PASS: 53 tests, 327 assertions, 79.44s |
+| PHP formatting | `docker compose exec -T api vendor/bin/pint --test --format agent` | PASS: current API tree |
 | Composer manifest | `docker compose exec -T api composer validate --strict` | PASS |
 | OpenAPI contract | `node --test tests/contract/openapi.test.mjs` | PASS: 2 tests |
 | Web lint | `npm run lint` in `apps/web` | PASS |
 | Web type check | `npm run typecheck` in `apps/web` | PASS |
 | Web unit/component | `npm run test:unit -- --run` in `apps/web` | PASS: 2 files, 2 tests |
-| Web production build/PWA | `npm run build` in `apps/web` | PASS: 66 modules, 27 precache entries, 328.44 KiB |
-| Playwright journeys | `npm run test:e2e` in `apps/web` | PASS: 26/26 across desktop and mobile projects, 2.5m |
+| Web production build/PWA | `npm run build` in `apps/web` | PASS: 68 modules, 28 precache entries, 342.12 KiB |
+| Playwright journeys | `npm run test:e2e` in `apps/web` | PASS: 30/30 across desktop and mobile projects, 2.1m |
 | Worker lint | `docker compose exec -T document-worker ruff check .` | PASS |
 | Worker tests | `docker compose exec -T document-worker pytest -q` | PASS: 5 tests; 6 dependency deprecation warnings |
 | Worker dependency consistency | `docker compose exec -T document-worker pip check` | PASS |
 | Python dependency audit | `python -m pip_audit -r requirements.runtime.txt` in an ephemeral final worker container | PASS: no known vulnerabilities |
 | JavaScript dependency audit | `npm audit --audit-level=high` | PASS: 0 vulnerabilities |
 | PHP dependency audit | `docker compose exec -T api composer audit --locked --no-interaction` | PASS: no advisories |
-| Git history secret scan | `gitleaks v8.30.1 git /repo --redact` | PASS: 13 commits, about 2.22 MB, no leaks |
+| Git history secret scan | `gitleaks v8.30.1 git /repo --redact` | PASS: 16 commits, about 2.39 MB, no leaks |
 | API production image | production multi-stage build plus runtime smoke | PASS: Laravel 13.29.0; UID/GID 33; required extensions loaded |
 | Web production image | production multi-stage build plus runtime smoke | PASS: nginx 1.28.0; UID/GID 101; HTTP 200 |
 | Worker production image | production build plus two-process runtime/OCR smoke | PASS: UID 10001; health HTTP 200; Tesseract 5.3.0 |
@@ -39,7 +39,7 @@ The implemented release candidate passes the automated functional, browser, cont
 | Security headers | GET through nginx | PASS: CSP, nosniff, SAMEORIGIN, strict-origin referrer and permissions policy present |
 | Passive DAST | OWASP ZAP 2.17.0 baseline against the production-path fixture | PASS gate: 0 failures, 1 warning category, 59 passive rules passed |
 
-The Playwright suite covers public accessibility, authentication, applicant registration/draft/upload/review/submission/acknowledgement, applicant status/inbox, verification source focusing and decisions, hard-copy receipt, scheduling/attendance, panel closure, scoring, selection certification, medical processing, strict reserve recommendation/approval, PATS intake, encrypted offline lock/reload/reconciliation, and a real two-browser-context protected-field conflict/resolution.
+The Playwright suite covers public accessibility, authentication, enforced temporary-password replacement, technical staff provisioning/recovery, applicant registration/draft/upload/review/submission/acknowledgement, applicant status/inbox, verification source focusing and decisions, hard-copy receipt, scheduling/attendance, panel closure, scoring, selection certification, medical processing, strict reserve recommendation/approval, PATS intake, encrypted offline lock/reload/reconciliation, and a real two-browser-context protected-field conflict/resolution.
 
 ZAP's only warning is the deliberate `style-src 'unsafe-inline'` CSP allowance used to position the normalized source-evidence rectangle over scanned pages. Scripts, objects, framing, base URLs and form targets remain constrained. Replacing that runtime style binding with nonce/hash-compatible classes is tracked as defence-in-depth work; the warning does not waive the independent authenticated test.
 

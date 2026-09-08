@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError, jsonBody, setAuthToken } from '../lib/api'
 import { useSessionStore } from '../stores/session'
 import type { User } from '../types'
 
 const tab = ref<'login' | 'register'>('login')
-const phase = ref<'access' | 'enrol' | 'confirm'>('access')
+const phase = ref<'access' | 'enrol' | 'confirm' | 'password'>('access')
 const busy = ref(false)
 const message = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
@@ -14,10 +14,15 @@ const provisioningUri = ref('')
 const recoveryCodes = ref<string[]>([])
 const login = reactive({ identity: '', password: '', totp: '' })
 const registration = reactive({ first_name: '', middle_names: '', last_name: '', nin: '', phone: '', email: '', date_of_birth: '', sex: '', nationality: 'Ugandan', password: '', password_confirmation: '' })
+const passwordChange = reactive({ current_password: '', password: '', password_confirmation: '' })
 const confirmCode = ref('')
 const session = useSessionStore()
 const router = useRouter()
 const route = useRoute()
+
+onMounted(() => {
+  if (session.user?.must_change_password) phase.value = 'password'
+})
 
 function fail(problem: unknown) {
   const error = problem as ApiError
@@ -39,6 +44,7 @@ async function submitLogin() {
   try {
     const response = await session.login(login.identity, login.password, login.totp)
     if (response.requires_mfa_enrolment) { phase.value = 'enrol'; return }
+    if (response.requires_password_change) { passwordChange.current_password = login.password; phase.value = 'password'; return }
     await destination()
   } catch (problem) { fail(problem) } finally { busy.value = false }
 }
@@ -54,9 +60,19 @@ async function enrolMfa() {
 async function confirmMfa() {
   busy.value = true
   try {
-    const response = await api<{ token: string }>('/auth/mfa/confirm', { method: 'POST', ...jsonBody({ code: confirmCode.value }) })
+    const response = await api<{ token: string; user: User; requires_password_change?: boolean }>('/auth/mfa/confirm', { method: 'POST', ...jsonBody({ code: confirmCode.value }) })
     setAuthToken(response.token)
-    if (session.user) session.user.mfa_confirmed = true
+    session.user = response.user
+    if (response.requires_password_change) { passwordChange.current_password = login.password; phase.value = 'password'; return }
+    await destination()
+  } catch (problem) { fail(problem) } finally { busy.value = false }
+}
+
+async function changePassword() {
+  busy.value = true; message.value = ''; fieldErrors.value = {}
+  try {
+    const response = await api<{ token: string; user: User }>('/auth/password', { method: 'PUT', ...jsonBody(passwordChange) })
+    setAuthToken(response.token); session.user = response.user
     await destination()
   } catch (problem) { fail(problem) } finally { busy.value = false }
 }
@@ -90,7 +106,8 @@ async function submitRegistration() {
         <button class="button primary full" :disabled="busy">{{ busy ? 'Creating…' : 'Create secure account' }}</button>
       </form>
       <div v-else-if="phase === 'enrol'" class="mfa-step"><p class="eyebrow">Required for staff</p><h2>Protect this account with MFA</h2><p>Continue to generate an authenticator secret and one-time recovery codes.</p><button class="button primary" :disabled="busy" @click="enrolMfa">Begin MFA enrolment</button></div>
-      <form v-else class="mfa-step" @submit.prevent="confirmMfa"><h2>Confirm the authenticator</h2><p class="break-all">Open this provisioning URI in your authenticator: <code>{{ provisioningUri }}</code></p><div class="recovery-box"><strong>Save these recovery codes once</strong><code v-for="code in recoveryCodes" :key="code">{{ code }}</code></div><label>Six-digit code<input v-model="confirmCode" inputmode="numeric" maxlength="6" required /></label><button class="button primary full" :disabled="busy">Activate MFA</button></form>
+      <form v-else-if="phase === 'confirm'" class="mfa-step" @submit.prevent="confirmMfa"><h2>Confirm the authenticator</h2><p class="break-all">Open this provisioning URI in your authenticator: <code>{{ provisioningUri }}</code></p><div class="recovery-box"><strong>Save these recovery codes once</strong><code v-for="code in recoveryCodes" :key="code">{{ code }}</code></div><label>Six-digit code<input v-model="confirmCode" inputmode="numeric" maxlength="6" required /></label><button class="button primary full" :disabled="busy">Activate MFA</button></form>
+      <form v-else class="mfa-step" @submit.prevent="changePassword"><p class="eyebrow">Required security step</p><h2>Replace the temporary password</h2><p>Choose a unique password with at least 12 characters, upper- and lower-case letters, and a number. Other application features remain locked until this is complete.</p><label>Current temporary password<input v-model="passwordChange.current_password" type="password" autocomplete="current-password" required /><small v-if="fieldErrors.current_password">{{ fieldErrors.current_password[0] }}</small></label><label>New password<input v-model="passwordChange.password" type="password" autocomplete="new-password" minlength="12" required /><small v-if="fieldErrors.password">{{ fieldErrors.password[0] }}</small></label><label>Confirm new password<input v-model="passwordChange.password_confirmation" type="password" autocomplete="new-password" minlength="12" required /></label><button class="button primary full" :disabled="busy">{{ busy ? 'Changing…' : 'Change password and continue' }}</button></form>
     </div>
   </section>
 </template>

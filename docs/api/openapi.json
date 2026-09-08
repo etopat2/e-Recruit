@@ -15,7 +15,18 @@
       "post": { "operationId": "createCampaign", "responses": { "201": { "description": "Draft campaign created" }, "422": { "$ref": "#/components/responses/ValidationError" } } }
     },
     "/v1/auth/register": { "post": { "operationId": "registerApplicant", "security": [], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Applicant registered" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
-    "/v1/auth/login": { "post": { "operationId": "login", "security": [], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Token or MFA challenge issued" }, "422": { "$ref": "#/components/responses/ValidationError" }, "429": { "description": "Rate limited" } } } },
+    "/v1/auth/login": { "post": { "operationId": "login", "security": [], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Full token, MFA challenge, or password-change-only token issued" }, "422": { "$ref": "#/components/responses/ValidationError" }, "429": { "description": "Rate limited" } } } },
+    "/v1/auth/password": { "put": { "operationId": "changeOwnPassword", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Password changed, prior sessions revoked, and full token issued" }, "401": { "$ref": "#/components/responses/Unauthenticated" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
+    "/v1/admin/roles": { "get": { "operationId": "listAccountRoles", "responses": { "200": { "description": "Roles available to the technical administrator" }, "403": { "$ref": "#/components/responses/Forbidden" } } } },
+    "/v1/admin/users": {
+      "get": { "operationId": "listManagedUsers", "responses": { "200": { "description": "Filtered account directory" }, "403": { "$ref": "#/components/responses/Forbidden" } } },
+      "post": { "operationId": "createStaffUser", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Staff account and one-time temporary password created" }, "403": { "$ref": "#/components/responses/Forbidden" }, "422": { "$ref": "#/components/responses/ValidationError" } } }
+    },
+    "/v1/admin/users/{user}": { "put": { "operationId": "updateManagedUser", "parameters": [{ "$ref": "#/components/parameters/UserId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Account identity, status, and role updated with audit reason" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/ValidationError" } } } },
+    "/v1/admin/users/{user}/scopes": { "put": { "operationId": "replaceManagedUserScopes", "parameters": [{ "$ref": "#/components/parameters/UserId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "Complete staff scope set replaced and audited" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/v1/admin/users/{user}/password-reset": { "post": { "operationId": "resetManagedUserPassword", "parameters": [{ "$ref": "#/components/parameters/UserId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "One-time password issued and all sessions revoked" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/v1/admin/users/{user}/mfa-reset": { "post": { "operationId": "resetManagedUserMfa", "parameters": [{ "$ref": "#/components/parameters/UserId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "MFA registration cleared and all sessions revoked" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/v1/admin/users/{user}/sessions/revoke": { "post": { "operationId": "revokeManagedUserSessions", "parameters": [{ "$ref": "#/components/parameters/UserId" }], "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "200": { "description": "All browser sessions and API tokens revoked" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
     "/v1/applications": {
       "get": { "operationId": "listApplications", "responses": { "200": { "description": "Scope-filtered applications" }, "401": { "$ref": "#/components/responses/Unauthenticated" } } },
       "post": { "operationId": "createApplication", "requestBody": { "$ref": "#/components/requestBodies/JsonBody" }, "responses": { "201": { "description": "Draft created" }, "409": { "$ref": "#/components/responses/Conflict" } } }
@@ -64,7 +75,8 @@
       "OfflinePackageId": { "name": "offlinePackage", "in": "path", "required": true, "schema": { "type": "string" } },
       "DeviceId": { "name": "device", "in": "path", "required": true, "schema": { "type": "string" } },
       "ConflictId": { "name": "conflict", "in": "path", "required": true, "schema": { "type": "string" } },
-      "SelectionRunId": { "name": "selectionRun", "in": "path", "required": true, "schema": { "type": "string" } }
+      "SelectionRunId": { "name": "selectionRun", "in": "path", "required": true, "schema": { "type": "string" } },
+      "UserId": { "name": "user", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
     },
     "requestBodies": { "JsonBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } } },
     "responses": {

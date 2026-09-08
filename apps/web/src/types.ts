@@ -4,8 +4,10 @@ export interface User {
   email: string | null
   phone: string | null
   user_type: string
+  status: string
   is_privileged: boolean
   mfa_confirmed: boolean
+  must_change_password: boolean
   scopes: Array<{ scope_type: string; scope_id: string | null; allowed_tasks: string[] }>
 }
 

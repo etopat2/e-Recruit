@@ -29,7 +29,7 @@ docker compose exec api php artisan migrate --seed --force
 
 Open `http://localhost:8080`. Mailpit is at `http://localhost:8026` and MinIO development console at `http://localhost:9011`.
 
-Demo staff accounts are disabled by default. For an isolated development database only, set `SEED_DEMO_USERS=true` in `apps/api/.env`, reseed, and immediately change the documented development-only password `ChangeMe!2026`. Privileged demo accounts still require MFA enrolment on first login.
+Demo staff accounts are disabled by default. For an isolated development database only, set `SEED_DEMO_USERS=true` in `apps/api/.env`, reseed, and immediately change the documented development-only password `ChangeMe!2026`. The seeded technical account is `system_administrator@example.test`; privileged accounts require MFA and every demo account is forced to replace its password before application access. Technical account management is available at `/staff/users` and all mutations are audited.
 
 ## Quality gates
 

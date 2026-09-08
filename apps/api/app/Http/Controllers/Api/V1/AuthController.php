@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -48,6 +49,8 @@ class AuthController extends Controller
                 'user_type' => 'applicant',
                 'status' => 'active',
                 'is_privileged' => false,
+                'must_change_password' => false,
+                'password_changed_at' => now(),
             ]);
             Applicant::query()->create([
                 'user_id' => $user->id,
@@ -108,6 +111,22 @@ class AuthController extends Controller
             }
         }
 
+        if ($user->must_change_password) {
+            $user->forceFill([
+                'last_login_at' => now(),
+                'mfa_confirmed_at' => $user->is_privileged ? now() : $user->mfa_confirmed_at,
+            ])->save();
+            $token = $user->createToken('required-password-change', ['password:change'], now()->addMinutes(15))->plainTextToken;
+            $audit->record('auth.password_change_required', $user, actor: $user);
+
+            return response()->json([
+                'message' => 'A new password is required before this account can continue.',
+                'requires_password_change' => true,
+                'token' => $token,
+                'user' => $this->userPayload($user),
+            ]);
+        }
+
         $user->forceFill([
             'last_login_at' => now(),
             'mfa_confirmed_at' => $user->is_privileged ? now() : $user->mfa_confirmed_at,
@@ -116,6 +135,36 @@ class AuthController extends Controller
         $audit->record('auth.login', $user, actor: $user, after: ['device_name' => $data['device_name']]);
 
         return response()->json(['token' => $token, 'user' => $this->userPayload($user)]);
+    }
+
+    public function changePassword(Request $request, AuditService $audit): JsonResponse
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string', 'max:255'],
+            'password' => ['required', 'confirmed', 'different:current_password', Password::min(12)->letters()->mixedCase()->numbers()],
+        ]);
+        $user = $request->user();
+        abort_if($user->is_privileged && $user->mfa_confirmed_at === null, 403, 'Complete MFA enrolment before changing this password.');
+        if (! Hash::check($data['current_password'], $user->password)) {
+            throw ValidationException::withMessages(['current_password' => 'The current password is incorrect.']);
+        }
+
+        $user->forceFill([
+            'password' => $data['password'],
+            'must_change_password' => false,
+            'password_changed_at' => now(),
+            'entity_version' => $user->entity_version + 1,
+        ])->save();
+        $user->tokens()->delete();
+        DB::table('sessions')->where('user_id', $user->id)->delete();
+        $token = $user->createToken('password-changed', ['*'], now()->addHours(12))->plainTextToken;
+        $audit->record('auth.password_changed', $user, actor: $user);
+
+        return response()->json([
+            'message' => 'Password changed and other sessions revoked.',
+            'token' => $token,
+            'user' => $this->userPayload($user),
+        ]);
     }
 
     public function me(Request $request): JsonResponse
@@ -162,9 +211,19 @@ class AuthController extends Controller
         $user->forceFill(['mfa_confirmed_at' => now()])->save();
         $audit->record('auth.mfa_confirmed', $user, actor: $user);
         $user->currentAccessToken()?->delete();
-        $token = $user->createToken('mfa-confirmed', ['*'], now()->addHours(12))->plainTextToken;
+        $requiresPasswordChange = (bool) $user->must_change_password;
+        $token = $user->createToken(
+            $requiresPasswordChange ? 'required-password-change' : 'mfa-confirmed',
+            $requiresPasswordChange ? ['password:change'] : ['*'],
+            $requiresPasswordChange ? now()->addMinutes(15) : now()->addHours(12),
+        )->plainTextToken;
 
-        return response()->json(['message' => 'MFA is active.', 'token' => $token]);
+        return response()->json([
+            'message' => $requiresPasswordChange ? 'MFA is active. A new password is now required.' : 'MFA is active.',
+            'token' => $token,
+            'requires_password_change' => $requiresPasswordChange,
+            'user' => $this->userPayload($user),
+        ]);
     }
 
     /** @return array<string, mixed> */
@@ -176,8 +235,10 @@ class AuthController extends Controller
             'email' => $user->email,
             'phone' => $user->phone,
             'user_type' => $user->user_type,
+            'status' => $user->status,
             'is_privileged' => $user->is_privileged,
             'mfa_confirmed' => $user->mfa_confirmed_at !== null,
+            'must_change_password' => (bool) $user->must_change_password,
             'scopes' => $user->relationLoaded('scopes') ? $user->scopes : [],
         ];
     }

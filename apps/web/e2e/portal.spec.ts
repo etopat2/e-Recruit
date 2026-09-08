@@ -28,6 +28,54 @@ async function staffSession(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: { user: { id: 7, name: 'Synthetic Officer', email: null, phone: null, user_type: 'panel_member', is_privileged: true, mfa_confirmed: true, scopes: [] } } }))
 }
 
+async function technicalAdministratorSession(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => localStorage.setItem('ups_auth_token', 'synthetic-technical-admin-token'))
+  await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: { user: { id: 1, name: 'Synthetic Technical Administrator', email: 'system_administrator@example.test', phone: null, user_type: 'system_administrator', status: 'active', is_privileged: true, mfa_confirmed: true, must_change_password: false, scopes: [] } } }))
+}
+
+test('temporary credentials must be replaced before application access', async ({ page }) => {
+  await page.route('**/api/v1/auth/login', async (route) => route.fulfill({ json: { token: 'temporary-token', requires_password_change: true, user: { id: 8, name: 'Synthetic New Officer', email: 'new-officer@example.test', phone: null, user_type: 'helpdesk_officer', status: 'active', is_privileged: false, mfa_confirmed: false, must_change_password: true, scopes: [] } } }))
+  await page.route('**/api/v1/auth/password', async (route) => route.fulfill({ json: { token: 'permanent-token', user: { id: 8, name: 'Synthetic New Officer', email: 'new-officer@example.test', phone: null, user_type: 'helpdesk_officer', status: 'active', is_privileged: false, mfa_confirmed: false, must_change_password: false, scopes: [] } } }))
+
+  await page.goto('/access?redirect=/')
+  await page.getByLabel('Email address or phone').fill('new-officer@example.test')
+  await page.getByLabel('Password', { exact: true }).fill('TemporaryPass2026')
+  await page.locator('button.button.primary.full').click()
+  await expect(page.getByRole('heading', { name: 'Replace the temporary password' })).toBeVisible()
+  await page.locator('input[autocomplete="new-password"]').nth(0).fill('PermanentSecurePass2026')
+  await page.locator('input[autocomplete="new-password"]').nth(1).fill('PermanentSecurePass2026')
+  await page.getByRole('button', { name: 'Change password and continue' }).click()
+  await expect(page).toHaveURL('http://127.0.0.1:4173/')
+})
+
+test('technical administrator provisions and secures staff accounts', async ({ page }) => {
+  await technicalAdministratorSession(page)
+  const roles = [
+    { code: 'applicant', name: 'Applicant', is_decision_role: false, is_privileged: false },
+    { code: 'helpdesk_officer', name: 'Helpdesk Officer', is_decision_role: false, is_privileged: false },
+    { code: 'system_administrator', name: 'System Administrator', is_decision_role: false, is_privileged: true },
+  ]
+  let created = false
+  const managedUser = () => ({ id: 9, name: 'Synthetic Helpdesk Officer', email: 'helpdesk-new@example.test', phone: null, user_type: 'helpdesk_officer', status: 'active', is_privileged: false, must_change_password: true, mfa_enabled: false, mfa_confirmed: false, last_login_at: null, password_changed_at: null, entity_version: created ? 2 : 1, roles: [{ code: 'helpdesk_officer', name: 'Helpdesk Officer' }], scopes: [] })
+  await page.route('**/api/v1/admin/roles', async (route) => route.fulfill({ json: { data: roles } }))
+  await page.route('**/api/v1/admin/users*', async (route) => {
+    if (route.request().method() === 'POST') { created = true; await route.fulfill({ status: 201, json: { user: managedUser(), temporary_password: 'Random-One-Time-2026', message: 'Account created. The temporary password is shown once.' } }) }
+    else await route.fulfill({ json: { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } } })
+  })
+  await page.route('**/api/v1/admin/users/9/password-reset', async (route) => route.fulfill({ json: { user: managedUser(), temporary_password: 'Replacement-One-Time-2026', message: 'Password reset. The temporary password is shown once and all sessions were revoked.' } }))
+
+  await page.goto('/staff/users')
+  await expect(page.getByRole('heading', { name: 'User and administrator accounts' })).toBeVisible()
+  await page.getByLabel('Full name').fill('Synthetic Helpdesk Officer')
+  await page.getByLabel('Email address').fill('helpdesk-new@example.test')
+  await page.getByLabel('Initial role').selectOption('helpdesk_officer')
+  await page.getByRole('button', { name: 'Create secure account' }).click()
+  await expect(page.getByText('Random-One-Time-2026')).toBeVisible()
+  await page.getByLabel('Reason for security action').fill('Approved synthetic account recovery test.')
+  await page.getByRole('button', { name: 'Issue temporary password' }).click()
+  await expect(page.getByText('Replacement-One-Time-2026')).toBeVisible()
+})
+
 test('applicant registers, completes the dynamic form, uploads evidence, submits, and reaches acknowledgement', async ({ page }) => {
   let version = 1
   let submitted = false

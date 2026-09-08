@@ -16,6 +16,7 @@ const router = createRouter({
     { path: '/staff/governance', name: 'governance', component: () => import('./views/GovernanceView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/selection', name: 'selection', component: () => import('./views/SelectionConsoleView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/operations', name: 'operations-workflow', component: () => import('./views/OperationsWorkflowView.vue'), meta: { auth: true, staff: true } },
+    { path: '/staff/users', name: 'user-administration', component: () => import('./views/UserAdministrationView.vue'), meta: { auth: true, technicalAdmin: true } },
     { path: '/field/offline', name: 'offline', component: () => import('./views/OfflineWorkspaceView.vue'), meta: { auth: true, staff: true } },
     { path: '/help', name: 'help', component: () => import('./views/HelpdeskView.vue'), meta: { auth: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -29,10 +30,12 @@ router.beforeEach(async (to) => {
     await session.restore()
     restored = true
   }
+  if (session.user?.must_change_password && to.name !== 'access') return { name: 'access', query: { redirect: to.fullPath } }
   if (to.meta.auth && !session.authenticated) return { name: 'access', query: { redirect: to.fullPath } }
   if (to.meta.staff && !session.isStaff) return { name: 'dashboard' }
+  if (to.meta.technicalAdmin && session.user?.user_type !== 'system_administrator') return { name: 'dashboard' }
   if (to.meta.applicant && !session.isApplicant) return { name: 'dashboard' }
-  if (to.name === 'access' && session.authenticated) return { name: 'dashboard' }
+  if (to.name === 'access' && session.authenticated && !session.user?.must_change_password) return { name: 'dashboard' }
   return true
 })
 

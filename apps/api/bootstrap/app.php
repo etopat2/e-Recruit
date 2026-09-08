@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CorrelationId;
 use App\Http\Middleware\RequireMfa;
+use App\Http\Middleware\RequirePasswordChange;
 use App\Http\Middleware\RequireRole;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('api', CorrelationId::class);
         $middleware->alias([
             'mfa' => RequireMfa::class,
+            'password.changed' => RequirePasswordChange::class,
             'role' => RequireRole::class,
         ]);
     })

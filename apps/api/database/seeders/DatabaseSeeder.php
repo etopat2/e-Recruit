@@ -197,13 +197,15 @@ class DatabaseSeeder extends Seeder
         }
 
         if (config('erecruit.seed_demo_users')) {
-            foreach (['hq_recruitment_administrator', 'verification_officer', 'panel_head', 'medical_officer', 'auditor'] as $roleCode) {
+            foreach (['system_administrator', 'hq_recruitment_administrator', 'verification_officer', 'panel_head', 'medical_officer', 'auditor'] as $roleCode) {
                 $user = User::query()->updateOrCreate(['email' => "{$roleCode}@example.test"], [
                     'name' => Str::headline($roleCode),
                     'password' => 'ChangeMe!2026',
                     'user_type' => $roleCode,
                     'status' => 'active',
                     'is_privileged' => in_array($roleCode, config('erecruit.security.privileged_roles'), true),
+                    'must_change_password' => true,
+                    'password_changed_at' => null,
                 ]);
                 $roleId = Role::query()->where('code', $roleCode)->value('id');
                 $user->roles()->syncWithoutDetaching([$roleId]);

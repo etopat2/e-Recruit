@@ -9,7 +9,7 @@ Decision: **engineering-complete staging/pilot release candidate; production NO-
 The v1.0 Must software scope in prompts 00–20 is implemented as a container-first modular monorepo:
 
 - Laravel 13 API with PostgreSQL, Redis queues/cache, private S3-compatible documents, health endpoints and versioned OpenAPI contract.
-- Scoped RBAC, privileged MFA enrolment/challenge/recovery, token/device revocation, rate limits, correlation IDs and a PII-redacted hash-chained audit ledger.
+- Scoped RBAC, technical-team user administration, forced one-time password replacement, privileged MFA enrolment/challenge/recovery, last-administrator protection, token/device revocation, rate limits, correlation IDs and a PII-redacted hash-chained audit ledger.
 - Versioned campaign, post, form, requirement, stage, geography, jurisdiction, centre, panel and policy configuration with publication guardrails and immutable submission snapshots.
 - Applicant registration/access, draft save/resume, dynamic forms, resumable checksummed upload, review, atomic submission, stable reference, QR/PDF acknowledgement, status, inbox and helpdesk/appeal boundaries.
 - Private document ingestion with extension/signature/MIME/size/malware gates, bounded Python OCR/quality processing, provenance/confidence/normalized source coordinates, pairwise evidence comparison and no OCR-only rejection.
@@ -46,7 +46,7 @@ No production credential belongs in `.env.production`; inject secrets from the a
 
 ## 4. Verification and residual risk
 
-The final local evidence includes 46 Laravel tests/273 assertions, 26 Playwright desktop/mobile journeys, frontend lint/type/unit/build, five worker tests, OpenAPI checks, clean npm/Composer/Python dependency checks, clean Git history secret scan, clean fixed HIGH/CRITICAL API/web/worker production-image scans, a ZAP baseline with zero failures, clean service readiness, a hash-matched isolated database/object restore and a production-path k6 smoke run with 0% failures and p95 452.61 ms. Exact commands and corrections are in `docs/testing/FINAL_TEST_REPORT.md`.
+The final local evidence includes 53 Laravel tests/327 assertions, 30 Playwright desktop/mobile journeys, frontend lint/type/unit/build, five worker tests, OpenAPI checks, clean npm/Composer/Python dependency checks, clean Git history secret scan, clean fixed HIGH/CRITICAL API/web/worker production-image scans, a ZAP baseline with zero failures, clean service readiness, a hash-matched isolated database/object restore and a production-path k6 smoke run with 0% failures and p95 452.61 ms. Exact commands and corrections are in `docs/testing/FINAL_TEST_REPORT.md`.
 
 Residual risk is concentrated outside the completed code boundary:
 

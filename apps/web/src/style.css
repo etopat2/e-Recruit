@@ -210,6 +210,16 @@ td small { color: var(--muted); margin-top: .2rem; }
 .result-box { background: #eee6d7; padding: 1.2rem; border-radius: .6rem; margin-top: 1rem; }
 .offline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 2rem max(7vw, 1.25rem); }
 .mono-note { font-family: ui-monospace, monospace; overflow-wrap: anywhere; background: #eee6d7; padding: .7rem; }
+.account-admin-layout { display: grid; grid-template-columns: minmax(300px, .55fr) minmax(600px, 1.45fr); gap: 2rem; padding: 2rem max(7vw, 1.25rem); align-items: start; }
+.account-directory { min-width: 0; }
+.account-filters { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: .75rem; align-items: end; }
+.account-filters label { margin: 0; }
+.account-actions-layout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.one-time-secret { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 1.2rem max(7vw, 1.25rem) 0; padding: 1rem; border: 2px solid var(--gold); background: #fff8e6; border-radius: .55rem; }
+.one-time-secret code { background: white; border: 1px solid var(--line); padding: .55rem .75rem; font-size: 1rem; }
+.one-time-secret span { flex-basis: 100%; color: var(--muted); }
+.stacked-actions { display: grid; gap: .75rem; }
+.scope-editor { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
 
 @media (max-width: 980px) {
   .menu-button { display: block; }
@@ -220,7 +230,8 @@ td small { color: var(--muted); margin-top: .2rem; }
   .hero-mark::before { width: 280px; height: 280px; }
   .hero-mark img { height: 290px; }
   .step-grid { grid-template-columns: 1fr 1fr; }
-  .access-layout, .configuration-layout, .verification-layout { grid-template-columns: 1fr; }
+  .access-layout, .configuration-layout, .verification-layout, .account-admin-layout, .account-actions-layout { grid-template-columns: 1fr; }
+  .account-filters { grid-template-columns: 1fr 1fr; }
   .access-layout > aside { padding-block: 3rem; min-height: auto; }
   .document-rail { position: static; max-height: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1rem; }
   .wizard-layout { grid-template-columns: 1fr; }
@@ -244,6 +255,7 @@ td small { color: var(--muted); margin-top: .2rem; }
   .wizard-panel, .evidence-panel { padding: 1.2rem; }
   .document-rail { grid-template-columns: 1fr; }
   .recovery-box { grid-template-columns: 1fr; }
+  .account-filters { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

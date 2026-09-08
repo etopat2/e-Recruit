@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\V1\OfficialArtifactController;
 use App\Http\Controllers\Api\V1\OfflineSyncController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SelectionController;
+use App\Http\Controllers\Api\V1\TechnicalUserController;
 use App\Http\Controllers\Api\V1\TrainingController;
 use App\Http\Controllers\Api\V1\UploadSessionController;
 use App\Http\Controllers\Api\V1\VerificationController;
@@ -40,13 +41,13 @@ Route::prefix('v1')->name('api.')->group(function (): void {
         Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::post('auth/mfa/enrol', [AuthController::class, 'enrolMfa'])->name('auth.mfa.enrol');
         Route::post('auth/mfa/confirm', [AuthController::class, 'confirmMfa'])->name('auth.mfa.confirm');
-        Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
-        Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
-        Route::get('notifications/push/config', [NotificationController::class, 'pushConfig'])->name('notifications.push.config');
-        Route::post('notifications/push/subscriptions', [NotificationController::class, 'subscribe'])->name('notifications.push.subscribe');
-        Route::delete('notifications/push/subscriptions/{pushSubscription}', [NotificationController::class, 'unsubscribe'])->name('notifications.push.unsubscribe');
-
-        Route::middleware('mfa')->group(function (): void {
+        Route::put('auth/password', [AuthController::class, 'changePassword'])->name('auth.password.update');
+        Route::middleware(['password.changed', 'mfa'])->group(function (): void {
+            Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+            Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+            Route::get('notifications/push/config', [NotificationController::class, 'pushConfig'])->name('notifications.push.config');
+            Route::post('notifications/push/subscriptions', [NotificationController::class, 'subscribe'])->name('notifications.push.subscribe');
+            Route::delete('notifications/push/subscriptions/{pushSubscription}', [NotificationController::class, 'unsubscribe'])->name('notifications.push.unsubscribe');
 
             Route::get('applications', [ApplicationController::class, 'index'])->name('applications.index');
             Route::post('applications', [ApplicationController::class, 'store'])->name('applications.store');
@@ -86,6 +87,17 @@ Route::prefix('v1')->name('api.')->group(function (): void {
                 Route::post('admin/geography/unresolved/{unresolved}/resolve', [GeographyController::class, 'resolve'])->name('admin.geography.unresolved.resolve');
                 Route::get('admin/geography/templates/{type}', [GeographyController::class, 'template'])->name('admin.geography.templates.show');
                 Route::post('admin/geography/imports/{type}', [GeographyController::class, 'import'])->middleware('throttle:uploads')->name('admin.geography.imports.store');
+            });
+
+            Route::prefix('admin')->middleware('role:system_administrator')->group(function (): void {
+                Route::get('roles', [TechnicalUserController::class, 'roles'])->name('admin.roles.index');
+                Route::get('users', [TechnicalUserController::class, 'index'])->name('admin.users.index');
+                Route::post('users', [TechnicalUserController::class, 'store'])->name('admin.users.store');
+                Route::put('users/{user}', [TechnicalUserController::class, 'update'])->name('admin.users.update');
+                Route::put('users/{user}/scopes', [TechnicalUserController::class, 'replaceScopes'])->name('admin.users.scopes.update');
+                Route::post('users/{user}/password-reset', [TechnicalUserController::class, 'resetPassword'])->name('admin.users.password-reset');
+                Route::post('users/{user}/mfa-reset', [TechnicalUserController::class, 'resetMfa'])->name('admin.users.mfa-reset');
+                Route::post('users/{user}/sessions/revoke', [TechnicalUserController::class, 'revokeSessions'])->name('admin.users.sessions.revoke');
             });
 
             Route::get('applications/{application}/verification-workbench', [VerificationController::class, 'show'])->name('verification.show');

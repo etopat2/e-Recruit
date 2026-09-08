@@ -2,18 +2,24 @@
 
 Last verified: 2026-09-08 (Africa/Kampala)
 
-This guide covers the Docker-based development environment, the currently present local users, optional demo credentials, all application-specific environment settings, MFA enrolment, automated checks, and production configuration validation.
+This guide covers the Docker-based development environment, the currently present local users, development credentials, technical account administration, all application-specific environment settings, MFA enrolment, automated checks, and production configuration validation.
 
 > **Testing only:** use synthetic data. Never reuse the documented demo password, local infrastructure defaults, test NINs, or recovery codes in staging or production. Plaintext passwords are never stored by the application and cannot be recovered from the database.
 
 ## 1. Current local users
 
-The local PostgreSQL database was queried on 2026-09-08. It currently contains these two records and no seeded staff accounts:
+The local PostgreSQL database was migrated, seeded, and queried on 2026-09-08. It currently contains two applicant records and six development staff accounts:
 
 | Email | Name | Type | Status | Assigned roles | Password availability |
 |---|---|---|---|---|---|
 | Personal applicant (redacted from Git; use the local query below) | Redacted | Applicant | Active | None | Unknown and not recoverable; it does not match the demo password |
 | `restore-drill@example.test` | SYNTHETIC Restore Drill Applicant | Applicant | Active | None | Not available; the restore drill generated and discarded a random 64-character password |
+| `system_administrator@example.test` | System Administrator | System Administrator | Active | `system_administrator` | `ChangeMe!2026` (development only; forced change at first sign-in) |
+| `hq_recruitment_administrator@example.test` | HQ Recruitment Administrator | HQ Recruitment Administrator | Active | `hq_recruitment_administrator` | `ChangeMe!2026` (development only; forced change at first sign-in) |
+| `verification_officer@example.test` | Verification Officer | Verification Officer | Active | `verification_officer` | `ChangeMe!2026` (development only; forced change at first sign-in) |
+| `panel_head@example.test` | Panel Head | Panel Head | Active | `panel_head` | `ChangeMe!2026` (development only; forced change at first sign-in) |
+| `medical_officer@example.test` | Medical Officer | Medical Officer | Active | `medical_officer` | `ChangeMe!2026` (development only; forced change at first sign-in) |
+| `auditor@example.test` | Auditor | Auditor | Active | `auditor` | `ChangeMe!2026` (development only; forced change at first sign-in) |
 
 The application stores one-way password hashes. An existing password can be verified during login, but neither administrators nor database operators can decrypt or display it. Do not claim that a hash is a usable password.
 
@@ -22,20 +28,21 @@ The personal applicant email is deliberately excluded from this version-controll
 To list the current non-secret account inventory again:
 
 ```powershell
-docker compose exec -T postgres psql -U erecruit -d erecruit -c "SELECT email, name, user_type, status, is_privileged, mfa_confirmed_at FROM users ORDER BY email;"
+docker compose exec -T postgres psql -U erecruit -d erecruit -c "SELECT email, name, user_type, status, is_privileged, must_change_password, mfa_confirmed_at FROM users ORDER BY email;"
 ```
 
-### Optional development staff accounts
+### Development staff credentials
 
-These accounts are defined by `DatabaseSeeder`, but they do not exist until demo-user seeding is explicitly enabled. All use the development-only password `ChangeMe!2026`.
+These accounts are defined by `DatabaseSeeder` and have been explicitly enabled in the current isolated local database. On a fresh clone they do not exist until demo-user seeding is explicitly enabled. All start with the development-only password `ChangeMe!2026`; all must replace it before application access.
 
-| Email | Password | Role | Privileged/MFA |
+| Email | Password | Role | First-login security |
 |---|---|---|---|
-| `hq_recruitment_administrator@example.test` | `ChangeMe!2026` | HQ Recruitment Administrator | Yes; enrol MFA on first login |
-| `verification_officer@example.test` | `ChangeMe!2026` | Verification Officer | No |
-| `panel_head@example.test` | `ChangeMe!2026` | Panel Head | Yes; enrol MFA on first login |
-| `medical_officer@example.test` | `ChangeMe!2026` | Medical Officer | Yes; enrol MFA on first login |
-| `auditor@example.test` | `ChangeMe!2026` | Auditor | Yes; enrol MFA on first login |
+| `system_administrator@example.test` | `ChangeMe!2026` | Technical System Administrator | Enrol MFA, save recovery codes, then replace password |
+| `hq_recruitment_administrator@example.test` | `ChangeMe!2026` | HQ Recruitment Administrator | Enrol MFA, then replace password |
+| `verification_officer@example.test` | `ChangeMe!2026` | Verification Officer | Replace password |
+| `panel_head@example.test` | `ChangeMe!2026` | Panel Head | Enrol MFA, then replace password |
+| `medical_officer@example.test` | `ChangeMe!2026` | Medical Officer | Enrol MFA, then replace password |
+| `auditor@example.test` | `ChangeMe!2026` | Auditor | Enrol MFA, then replace password |
 
 Enable them only in an isolated development database:
 
@@ -50,11 +57,25 @@ Enable them only in an isolated development database:
 3. Confirm the accounts with the inventory query above.
 4. Return `SEED_DEMO_USERS=false` after seeding so later deployments cannot accidentally infer that demo accounts are desired.
 
-The production Compose definition forcibly sets `SEED_DEMO_USERS=false`. Never change that production guard.
+The one-command environment override used to seed the current database was transient; the normal configuration remains disabled. The production Compose definition forcibly sets `SEED_DEMO_USERS=false`. Never change that production guard.
+
+### Technical super-administrator account
+
+Use `system_administrator@example.test` only for local technical-team testing:
+
+1. Open `/access`, enter the documented development credential, and select **Sign in**.
+2. Select **Begin MFA enrolment**. Add the displayed `otpauth://` URI to an authenticator and store the one-time recovery codes securely.
+3. Enter the current six-digit code and select **Activate MFA**.
+4. Replace `ChangeMe!2026` with a unique password of at least 12 characters containing upper- and lower-case letters and a number.
+5. Open **Users** in the navigation or go directly to `/staff/users`.
+
+The technical administrator can list all applicant and staff identities; create staff accounts; update names, contact values, roles and active/disabled status; replace staff scopes; issue one-time password resets; reset MFA; and revoke all sessions. Each mutation is audited and sensitive actions require a reason. A technical administrator cannot disable or demote their own account, remove the last active technical administrator, reset their own MFA/password through the administrative recovery controls, convert applicants into staff, or make recruitment decisions.
 
 ### Resetting an unknown local password
 
-Reset only synthetic/local accounts for which you are authorised. The following PowerShell flow keeps the new password out of the command history. It must contain at least 10 characters, upper- and lower-case letters, and a number.
+Prefer the audited **Users** screen described above: select the identity, enter an authorised reason, and choose **Issue temporary password**. Copy the generated value immediately; it is returned once, all existing sessions are revoked, and the user must replace it on next sign-in.
+
+For emergency recovery of the only technical administrator in an isolated local environment, reset only an account for which you are authorised. The following PowerShell flow keeps the new password out of command history. It must contain at least 12 characters, upper- and lower-case letters, and a number.
 
 ```powershell
 $resetEmail = Read-Host 'Local account email'
@@ -65,7 +86,7 @@ try {
     docker compose exec -T `
       -e ERECRUIT_RESET_EMAIL="$resetEmail" `
       -e ERECRUIT_RESET_PASSWORD="$resetPassword" `
-      api php artisan tinker --execute="App\Models\User::where('email', getenv('ERECRUIT_RESET_EMAIL'))->firstOrFail()->update(['password' => getenv('ERECRUIT_RESET_PASSWORD')]);"
+    api php artisan tinker --execute="DB::transaction(function () { App\Models\User::where('email', getenv('ERECRUIT_RESET_EMAIL'))->firstOrFail()->update(['password' => getenv('ERECRUIT_RESET_PASSWORD'), 'must_change_password' => false, 'password_changed_at' => now()]); App\Models\User::where('email', getenv('ERECRUIT_RESET_EMAIL'))->firstOrFail()->tokens()->delete(); DB::table('sessions')->where('user_id', App\Models\User::where('email', getenv('ERECRUIT_RESET_EMAIL'))->value('id'))->delete(); });"
 } finally {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
     Remove-Variable resetPassword -ErrorAction SilentlyContinue
@@ -197,7 +218,7 @@ These are the e-Recruit-specific API settings. Standard Laravel driver alternati
 | `APP_DEBUG` | `true` locally only | Detailed local errors; must be false in production |
 | `APP_URL` | Same-origin application URL | Absolute link and artifact URL generation |
 | `APP_TIMEZONE` | `Africa/Kampala` | Application date/time interpretation |
-| `SEED_DEMO_USERS` | `false` by default | Explicit switch for the five demo staff users |
+| `SEED_DEMO_USERS` | `false` by default | Explicit switch for the six demo staff users, including the technical administrator |
 | `APP_LOCALE`, `APP_FALLBACK_LOCALE` | `en` | UI/server locale fallbacks |
 | `LOG_CHANNEL`, `LOG_STACK`, `LOG_LEVEL` | `stack`, `single`, `debug` | Local logging |
 | `DB_CONNECTION` | `pgsql` | Supported relational database driver |
@@ -252,14 +273,15 @@ Losing `APP_KEY` makes encrypted fields unreadable. Back it up in the approved s
 
 ## 5. Privileged MFA setup
 
-For each privileged demo account:
+For each privileged development account:
 
 1. Open `/access` and sign in with its email and `ChangeMe!2026`.
 2. Select **Begin MFA enrolment** when prompted.
 3. Open the displayed `otpauth://` provisioning URI in an authenticator application.
 4. Save the one-time recovery codes outside the browser. They are shown only during enrolment.
 5. Enter the current six-digit code and activate MFA.
-6. On later logins, supply the password and current authenticator code together.
+6. When prompted, replace the development-only temporary password before entering the application.
+7. On later logins, supply the new password and current authenticator code together.
 
 Do not share authenticator secrets or recovery codes between testers. Reset MFA only through an authorised, audited support process.
 
@@ -318,16 +340,17 @@ docker compose exec -T document-worker pip check
 
 Use separate browser profiles for independent actors and use only synthetic identities.
 
-1. Applicant: register, save/resume a draft, upload allowed documents, review, submit, download acknowledgement, view status/inbox, and create a helpdesk ticket.
-2. HQ administrator: configure/clone/publish a campaign, import geography, create schedules, run selection scenarios, and inspect operational reports.
-3. Verification officer: focus the protected original and OCR source highlight, compare evidence, and record a reasoned versioned decision.
-4. Panel head: enrol MFA, record/aggregate scoring, reconcile offline work, close the panel, and confirm post-close immutability.
-5. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.
-6. Auditor: enrol MFA, verify the audit hash chain, inspect integrity flags, and confirm decision actions remain forbidden.
-7. Offline field mode: issue a scoped pack, choose a local PIN, reload to verify it locks, sync idempotently, and resolve a protected-field conflict with an independent authorised account.
-8. Confirm messages appear in Mailpit and private documents cannot be opened without a valid authenticated API token.
+1. Technical administrator: complete MFA and password replacement, create a staff identity, change its role/status/scopes, reset its password/MFA, revoke its sessions, and inspect the corresponding audit entries.
+2. Applicant: register, save/resume a draft, upload allowed documents, review, submit, download acknowledgement, view status/inbox, and create a helpdesk ticket.
+3. HQ administrator: configure/clone/publish a campaign, import geography, create schedules, run selection scenarios, and inspect operational reports.
+4. Verification officer: focus the protected original and OCR source highlight, compare evidence, and record a reasoned versioned decision.
+5. Panel head: enrol MFA, record/aggregate scoring, reconcile offline work, close the panel, and confirm post-close immutability.
+6. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.
+7. Auditor: enrol MFA, verify the audit hash chain, inspect integrity flags, and confirm decision actions remain forbidden.
+8. Offline field mode: issue a scoped pack, choose a local PIN, reload to verify it locks, sync idempotently, and resolve a protected-field conflict with an independent authorised account.
+9. Confirm messages appear in Mailpit and private documents cannot be opened without a valid authenticated API token.
 
-The five demo accounts do not represent every operational role. Tests for hard-copy receiving, attendance, Council approval, training-school processing and other roles use isolated factories. Create additional named staff accounts only through the approved IAM/user-provisioning process; do not assign several human testers to one shared credential.
+The six demo accounts do not represent every operational role. Tests for hard-copy receiving, attendance, Council approval, training-school processing and other roles use isolated factories. Create additional named staff accounts through the audited technical administration screen; do not assign several human testers to one shared credential.
 
 ## 8. Production configuration
 
