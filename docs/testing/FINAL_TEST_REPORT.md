@@ -27,7 +27,7 @@ The implemented release candidate passes the automated functional, browser, cont
 | Python dependency audit | `python -m pip_audit -r requirements.runtime.txt` in an ephemeral final worker container | PASS: no known vulnerabilities |
 | JavaScript dependency audit | `npm audit --audit-level=high` | PASS: 0 vulnerabilities |
 | PHP dependency audit | `docker compose exec -T api composer audit --locked --no-interaction` | PASS: no advisories |
-| Git history secret scan | `gitleaks v8.30.1 git /repo --redact` | PASS: 17 commits, about 2.40 MB, no leaks |
+| Git history secret scan | `gitleaks v8.30.1 git /repo --redact` | PASS: 18 commits, about 2.40 MB, no leaks |
 | API production image | production multi-stage build plus runtime smoke | PASS: Laravel 13.29.0; UID/GID 33; required extensions loaded |
 | Web production image | production multi-stage build plus runtime smoke | PASS: nginx 1.28.0; UID/GID 101; HTTP 200 |
 | Worker production image | production build plus two-process runtime/OCR smoke | PASS: UID 10001; health HTTP 200; Tesseract 5.3.0 |
