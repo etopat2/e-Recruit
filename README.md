@@ -16,6 +16,8 @@ The supplied `Resources/logo.png` is the official in-app logo. Square favicon/PW
 
 Requirements: Docker Desktop with Compose v2. The root ports are configurable in `.env.example`.
 
+For the verified local account inventory, demo credentials, every supported environment setting, MFA enrolment, and the complete test sequence, follow [testing.md](testing.md).
+
 ```sh
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env
