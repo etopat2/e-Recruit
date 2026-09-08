@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -25,6 +26,11 @@ class HealthController extends Controller
     public function ready(): JsonResponse
     {
         $checks = [
+            'encryption' => $this->check(function (): bool {
+                $probe = Str::random(32);
+
+                return Crypt::decryptString(Crypt::encryptString($probe)) === $probe;
+            }),
             'database' => $this->check(fn (): mixed => DB::selectOne('select 1 as ready')),
             'cache' => $this->check(function (): bool {
                 Cache::put('health:ready', 'ok', 10);

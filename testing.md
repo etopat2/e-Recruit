@@ -146,7 +146,10 @@ Run these commands from the repository root.
 
    ```powershell
    docker compose exec -T api php artisan key:generate --force
+   docker compose up -d --force-recreate api queue scheduler
    ```
+
+   Docker reads `env_file` values when it creates a container. Recreating these three services is required so the API server, queue worker, and scheduler all receive the newly generated key. Do not generate another key when `APP_KEY` is already populated; preserve that key so existing encrypted records remain readable.
 
 7. Create the schema and reference seed data:
 
@@ -430,7 +433,7 @@ Then follow `FINAL_IMPLEMENTATION_REPORT.md` and `docs/deployment/GO_LIVE_CHECKL
 
 - **The browser shows the XAMPP page:** Apache owns the selected host port. Stop Apache or change root `APP_PORT`, then recreate nginx with `docker compose up -d --force-recreate nginx`.
 - **Database authentication fails after changing `.env`:** the existing PostgreSQL volume still has the old credential. Restore the old value, alter the database role deliberately, or recreate only disposable local data after backup.
-- **`APP_KEY` error:** run `docker compose exec -T api php artisan key:generate --force`, then restart API/queue/scheduler.
+- **`APP_KEY` error:** if `APP_KEY` is already populated in `apps/api/.env`, do not replace it; run `docker compose up -d --force-recreate api queue scheduler`. If it is empty on a new installation, run `docker compose exec -T api php artisan key:generate --force` once and then recreate those services. Confirm `/api/v1/health/ready` reports `checks.encryption.ok: true`.
 - **Worker returns 401/403:** `DOCUMENT_WORKER_TOKEN` differs between the API and worker.
 - **Uploads fail storage readiness:** confirm MinIO is healthy, `minio-init` succeeded, the bucket names match, and anonymous access is disabled.
 - **Privileged user receives an MFA error:** complete first-login enrolment and provide a current TOTP or unused recovery code.

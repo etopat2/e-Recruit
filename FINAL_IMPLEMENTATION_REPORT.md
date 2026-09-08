@@ -46,7 +46,7 @@ No production credential belongs in `.env.production`; inject secrets from the a
 
 ## 4. Verification and residual risk
 
-The final local evidence includes 53 Laravel tests/327 assertions, 30 Playwright desktop/mobile journeys, frontend lint/type/unit/build, five worker tests, OpenAPI checks, clean npm/Composer/Python dependency checks, clean Git history secret scan, clean fixed HIGH/CRITICAL API/web/worker production-image scans, a ZAP baseline with zero failures, clean service readiness, a hash-matched isolated database/object restore and a production-path k6 smoke run with 0% failures and p95 452.61 ms. Exact commands and corrections are in `docs/testing/FINAL_TEST_REPORT.md`.
+The final local evidence includes 54 Laravel tests/332 assertions, 30 Playwright desktop/mobile journeys, frontend lint/type/unit/build, five worker tests, OpenAPI checks, clean npm/Composer/Python dependency checks, clean Git history secret scan, clean fixed HIGH/CRITICAL API/web/worker production-image scans, a ZAP baseline with zero failures, clean service readiness, a hash-matched isolated database/object restore and a production-path k6 smoke run with 0% failures and p95 452.61 ms. Exact commands and corrections are in `docs/testing/FINAL_TEST_REPORT.md`.
 
 Residual risk is concentrated outside the completed code boundary:
 

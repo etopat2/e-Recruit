@@ -24,6 +24,7 @@ cp apps/api/.env.example apps/api/.env
 docker compose build
 docker compose up -d
 docker compose exec api php artisan key:generate --force
+docker compose up -d --force-recreate api queue scheduler
 docker compose exec api php artisan migrate --seed --force
 ```
 
