@@ -171,6 +171,9 @@ td small { color: var(--muted); margin-top: .2rem; }
 .wizard-nav span { width: 1.8rem; height: 1.8rem; display: grid; place-items: center; border-radius: 50%; background: #e3d9c7; color: var(--ink); font-weight: 700; }
 .wizard-panel { background: var(--paper); border: 1px solid var(--line); border-radius: .75rem; padding: clamp(1.4rem, 4vw, 3rem); min-height: 560px; }
 .repeat-card { padding: 1.2rem; border: 1px solid var(--line); border-radius: .5rem; margin-bottom: .8rem; }
+.education-record-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .35rem; }
+.education-record-heading .text-button { margin: 0; }
+label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
 .text-button { background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .text-button.danger { color: var(--danger); }
 .upload-row { display: grid; grid-template-columns: 1fr 1.5fr auto; align-items: end; gap: 1rem; }
