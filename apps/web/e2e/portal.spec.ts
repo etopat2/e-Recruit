@@ -83,7 +83,7 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
     id: 'app-1', reference: submitted ? 'UPS/2026/WRD/000001' : null, status: submitted ? 'awaiting_hard_copies' : 'draft', entity_version: version,
     submitted_at: submitted ? '2026-09-02T08:00:00Z' : null, draft_data: {}, documents: [], timeline: submitted ? [{ status: 'submitted', reason: 'Application submitted', at: '2026-09-02T08:00:00Z' }] : [],
     campaign: { id: 'campaign-1', code: 'UPS-2026', name: 'UPS Recruitment 2026', year: 2026, status: 'published', opens_at: '2026-09-01T00:00:00Z', closes_at: '2026-09-30T20:59:00Z', hard_copy_deadline_at: '2026-10-05T14:00:00Z', privacy_notice: {} },
-    post: { id: 'post-1', code: 'WARDER', name: 'Recruit Warder', description: '', sections: { personal: { required: true }, declaration: { required: true } }, hard_copy_required: true },
+    post: { id: 'post-1', code: 'WARDER', name: 'Recruit Warder', description: '', sections: { personal: { required: true }, education: { required: true }, declaration: { required: true } }, hard_copy_required: true },
   })
   await page.route('**/api/v1/auth/register', async (route) => route.fulfill({ status: 201, json: { token: 'synthetic-applicant-token', user: { id: 11, name: 'Synthetic Applicant', email: null, phone: null, user_type: 'applicant', is_privileged: false, mfa_confirmed: true, scopes: [] } } }))
   await page.route('**/api/v1/applications', async (route) => route.fulfill({ status: 201, json: { data: application() } }))
@@ -115,6 +115,15 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
   await page.getByLabel('National ID number').fill('CM00000000000001')
   await page.getByLabel('Date of birth').fill('2000-01-01')
   await page.getByLabel('Nationality').fill('Ugandan')
+  await page.getByRole('button', { name: /education/i }).click()
+  await page.getByRole('button', { name: 'Add qualification' }).click()
+  const levelSelect = page.getByRole('combobox', { name: /^Level\b/ })
+  const resultSelect = page.getByRole('combobox', { name: /^Result \/ class\b/ })
+  await levelSelect.selectOption('UCE')
+  await expect(resultSelect).toContainText('Result 1 — certificate awarded')
+  await resultSelect.selectOption('Result 1 (Certificate awarded)')
+  await page.getByRole('textbox', { name: 'Institution', exact: true }).fill('Synthetic Secondary School')
+  await page.getByRole('textbox', { name: 'Completion year', exact: true }).fill('2024')
   await page.getByRole('button', { name: /declaration/i }).click()
   await page.getByRole('checkbox', { name: /information and documents/i }).check()
   await page.getByRole('button', { name: /documents/i }).click()

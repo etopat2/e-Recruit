@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    watch: process.env.VITE_USE_POLLING === 'true' ? { usePolling: true, interval: 500 } : undefined,
     proxy: { '/api': { target: 'http://api:8000', changeOrigin: true } },
   },
   test: {
