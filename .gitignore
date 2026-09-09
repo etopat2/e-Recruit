@@ -16,4 +16,5 @@
 /services/document-worker/.ruff_cache/
 /services/document-worker/**/__pycache__/
 /backups/
+/Resources/01_uganda_administrative_data_complete/
 *.local

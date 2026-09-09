@@ -49,6 +49,8 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('notifications/push/subscriptions', [NotificationController::class, 'subscribe'])->name('notifications.push.subscribe');
             Route::delete('notifications/push/subscriptions/{pushSubscription}', [NotificationController::class, 'unsubscribe'])->name('notifications.push.unsubscribe');
 
+            Route::get('geography/units', [GeographyController::class, 'selectableUnits'])->middleware('throttle:120,1')->name('geography.units.index');
+
             Route::get('applications', [ApplicationController::class, 'index'])->name('applications.index');
             Route::post('applications', [ApplicationController::class, 'store'])->name('applications.store');
             Route::get('applications/{application}', [ApplicationController::class, 'show'])->name('applications.show');
@@ -80,6 +82,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
                 Route::get('admin/geography', [GeographyController::class, 'index'])->name('admin.geography.index');
                 Route::post('admin/geography/units', [GeographyController::class, 'storeUnit'])->name('admin.geography.units.store');
                 Route::put('admin/geography/units/{unit}', [GeographyController::class, 'updateUnit'])->name('admin.geography.units.update');
+                Route::delete('admin/geography/units/{unit}', [GeographyController::class, 'destroyUnit'])->name('admin.geography.units.destroy');
                 Route::post('admin/geography/regions', [GeographyController::class, 'storeRegion'])->name('admin.geography.regions.store');
                 Route::post('admin/geography/centres', [GeographyController::class, 'storeCentre'])->name('admin.geography.centres.store');
                 Route::post('admin/geography/mappings', [GeographyController::class, 'storeMapping'])->name('admin.geography.mappings.store');

@@ -104,12 +104,16 @@ class ApplicationController extends Controller
     public function update(StoreApplicationDraftRequest $request, Application $application, AuditService $audit): ApplicationResource|JsonResponse
     {
         $data = $request->validated();
+        $draftData = $this->canonicalizeAdministrativeAddresses($request->input('draft_data'));
         $updated = Application::query()
             ->whereKey($application->id)
             ->where('status', Application::StatusDraft)
             ->where('entity_version', $data['entity_version'])
             ->update([
-                'draft_data' => $data['draft_data'],
+                // The request has already validated every top-level section and
+                // bounded nested shape. Preserve the campaign-defined input
+                // order instead of Validator's dotted-rule traversal order.
+                'draft_data' => $draftData,
                 'entity_version' => DB::raw('entity_version + 1'),
                 'updated_at' => now(),
             ]);
@@ -147,6 +151,7 @@ class ApplicationController extends Controller
 
         $application->loadMissing(['applicant', 'campaign', 'post', 'documents']);
         $this->assertSubmissionComplete($application);
+        $this->assertAdministrativeAddressesValid($application);
         DB::transaction(function () use ($application, $data, $referenceService, $canonicalJson, $request, $audit): void {
             $reference = $referenceService->allocate($application);
             $snapshot = [
@@ -187,6 +192,7 @@ class ApplicationController extends Controller
                 'submitted_at' => $submittedAt,
                 'entity_version' => $application->entity_version + 1,
             ])->save();
+            $this->syncApplicantAddresses($application);
             ApplicationStatusHistory::query()->create([
                 'application_id' => $application->id,
                 'from_status' => Application::StatusDraft,
@@ -263,6 +269,97 @@ class ApplicationController extends Controller
                 'missing_documents' => $missingDocuments === [] ? 'None.' : implode(', ', $missingDocuments),
             ]);
         }
+    }
+
+    private function assertAdministrativeAddressesValid(Application $application): void
+    {
+        foreach (['address', 'origin', 'residence'] as $section) {
+            $address = data_get($application->draft_data, $section);
+            if (! is_array($address)) {
+                continue;
+            }
+
+            $deepestId = collect(['village', 'parish', 'subcounty', 'county', 'district'])
+                ->map(fn (string $level) => $address["{$level}_id"] ?? null)
+                ->filter()
+                ->first();
+            if (! $deepestId) {
+                continue;
+            }
+            $path = DB::table('administrative_unit_paths')->where('unit_id', $deepestId)->first();
+            if (! $path) {
+                throw ValidationException::withMessages([
+                    $section => 'Choose the address again from the current administrative unit list.',
+                ]);
+            }
+
+            foreach (['region', 'subregion', 'district', 'county', 'subcounty', 'parish', 'village'] as $level) {
+                $expected = $path->{"{$level}_id"};
+                if ($expected && ($address["{$level}_id"] ?? null) !== $expected) {
+                    throw ValidationException::withMessages([
+                        $section => 'The selected administrative units do not belong to the same address path.',
+                    ]);
+                }
+            }
+        }
+    }
+
+    private function syncApplicantAddresses(Application $application): void
+    {
+        foreach (['address' => 'residence', 'origin' => 'origin', 'residence' => 'residence'] as $section => $type) {
+            $address = data_get($application->draft_data, $section);
+            if (! is_array($address) || empty($address['district_id'])) {
+                continue;
+            }
+
+            $key = ['application_id' => $application->id, 'address_type' => $type];
+            $id = DB::table('applicant_addresses')->where($key)->value('id') ?? (string) Str::ulid();
+            DB::table('applicant_addresses')->updateOrInsert($key, [
+                'id' => $id,
+                'district_id' => $address['district_id'],
+                'county_id' => $address['county_id'] ?? null,
+                'subcounty_id' => $address['subcounty_id'] ?? null,
+                'parish_id' => $address['parish_id'] ?? null,
+                'village_id' => $address['village_id'] ?? null,
+                'physical_address' => $address['physical_address'] ?? null,
+                'residence_months' => $address['residence_months'] ?? null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    /** @param array<string, mixed> $draftData
+     * @return array<string, mixed>
+     */
+    private function canonicalizeAdministrativeAddresses(array $draftData): array
+    {
+        $levels = ['region', 'subregion', 'district', 'county', 'subcounty', 'parish', 'village'];
+        foreach (['address', 'origin', 'residence'] as $section) {
+            $address = $draftData[$section] ?? null;
+            if (! is_array($address)) {
+                continue;
+            }
+            $deepestId = collect(array_reverse($levels))
+                ->map(fn (string $level) => $address["{$level}_id"] ?? null)
+                ->filter()
+                ->first();
+            if (! $deepestId) {
+                continue;
+            }
+
+            $path = DB::table('administrative_unit_paths')->where('unit_id', $deepestId)->first();
+            $ids = collect($levels)->map(fn (string $level) => $path?->{"{$level}_id"})->filter()->values();
+            $units = DB::table('administrative_units')->whereIn('id', $ids)->pluck('name', 'id');
+            foreach ($levels as $level) {
+                $id = $path?->{"{$level}_id"};
+                $draftData[$section]["{$level}_id"] = $id;
+                $draftData[$section][$level] = $id ? $units[$id] : null;
+            }
+            $draftData[$section]['full_address'] = $path?->full_address;
+        }
+
+        return $draftData;
     }
 
     private function logoDataUri(): ?string

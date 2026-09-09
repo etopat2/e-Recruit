@@ -20,6 +20,8 @@ test('OpenAPI contract covers the public and high-risk workflow boundaries', () 
     '/v1/health/live',
     '/v1/campaigns',
     '/v1/auth/login',
+    '/v1/geography/units',
+    '/v1/admin/geography/units/{unit}',
     '/v1/applications/{application}',
     '/v1/applications/{application}/submit',
     '/v1/applications/{application}/verification-workbench',

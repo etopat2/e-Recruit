@@ -155,6 +155,13 @@ Run these commands from the repository root.
 
    ```powershell
    docker compose exec -T api php artisan migrate --seed --force
+   docker compose exec -T api php artisan erecruit:import-uganda-administrative-units
+   ```
+
+   The second command must report 84,627 imported administrative units and 353 skipped electoral units. It is safe to rerun after a source-data refresh. Verify the database counts and latest source hash:
+
+   ```powershell
+   docker compose exec -T api php artisan tinker --execute="dump(DB::table('administrative_units')->where('source', 'uganda_admin_complete_v1')->where('active', true)->count(), DB::table('administrative_unit_paths')->count(), DB::table('administrative_unit_imports')->latest()->first());"
    ```
 
 8. Check readiness:
@@ -344,8 +351,8 @@ docker compose exec -T document-worker pip check
 Use separate browser profiles for independent actors and use only synthetic identities.
 
 1. Technical administrator: complete MFA and password replacement, create a staff identity, change its role/status/scopes, reset its password/MFA, revoke its sessions, and inspect the corresponding audit entries.
-2. Applicant: register, save/resume a draft, upload allowed documents, review, submit, download acknowledgement, view status/inbox, and create a helpdesk ticket.
-3. HQ administrator: configure/clone/publish a campaign, import geography, create schedules, run selection scenarios, and inspect operational reports.
+2. Applicant: register, search and select a village to auto-populate its full administrative address, repeat using the district-down cascading selectors, save/resume a draft, upload allowed documents, review, submit, download acknowledgement, view status/inbox, and create a helpdesk ticket.
+3. HQ administrator: configure/clone/publish a campaign, create/edit/deactivate/delete unreferenced administrative units at every hierarchy level, confirm referenced units cannot be deleted, import geography, create schedules, run selection scenarios, and inspect operational reports.
 4. Verification officer: focus the protected original and OCR source highlight, compare evidence, and record a reasoned versioned decision.
 5. Panel head: enrol MFA, record/aggregate scoring, reconcile offline work, close the panel, and confirm post-close immutability.
 6. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.

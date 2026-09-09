@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SearchAdministrativeUnitsRequest;
 use App\Models\AdministrativeUnit;
 use App\Models\PrisonRegion;
 use App\Models\RecruitmentCampaign;
 use App\Models\RecruitmentCentre;
+use App\Services\AdministrativeUnitPathService;
 use App\Services\AuditService;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +26,45 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class GeographyController extends Controller
 {
-    private const LEVELS = ['district', 'county', 'subcounty', 'parish', 'village'];
+    private const LEVELS = ['region', 'subregion', 'district', 'county', 'subcounty', 'parish', 'village'];
+
+    private const PATH_FILTERS = [
+        'region_id', 'subregion_id', 'district_id', 'county_id', 'subcounty_id', 'parish_id',
+    ];
+
+    public function selectableUnits(SearchAdministrativeUnitsRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        if ($data['level'] === 'village' && blank($data['search'] ?? null) && blank($data['parish_id'] ?? null)) {
+            throw ValidationException::withMessages([
+                'search' => 'Enter at least two characters or select a parish before loading villages.',
+            ]);
+        }
+
+        $query = AdministrativeUnit::query()
+            ->where('level', $data['level'])
+            ->where('active', true)
+            ->with('path');
+
+        if ($data['parent_id'] ?? null) {
+            $query->where('parent_id', $data['parent_id']);
+        }
+        foreach (self::PATH_FILTERS as $filter) {
+            if ($data[$filter] ?? null) {
+                $query->whereHas('path', fn ($pathQuery) => $pathQuery->where($filter, $data[$filter]));
+            }
+        }
+        if ($data['search'] ?? null) {
+            $search = Str::lower(Str::ascii(trim($data['search'])));
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+            $query->whereHas('path', fn ($pathQuery) => $pathQuery->where('search_text', 'like', "%{$escaped}%"))
+                ->orderByRaw('CASE WHEN LOWER(name) = ? THEN 0 WHEN LOWER(name) LIKE ? THEN 1 ELSE 2 END', [$search, "{$escaped}%"]);
+        }
+
+        $units = $query->orderBy('name')->limit($data['limit'] ?? 100)->get();
+
+        return response()->json(['data' => $this->unitPayloads($units)]);
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -37,12 +78,14 @@ class GeographyController extends Controller
             ->when(array_key_exists('parent_id', $data), fn ($query) => $query->where('parent_id', $data['parent_id']))
             ->when($data['search'] ?? null, fn ($query, $search) => $query->where(fn ($nested) => $nested->where('code', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%")))
             ->with('parent:id,code,name,level')
-            ->orderByRaw("case level when 'district' then 1 when 'county' then 2 when 'subcounty' then 3 when 'parish' then 4 else 5 end")
+            ->orderByRaw("case level when 'region' then 1 when 'subregion' then 2 when 'district' then 3 when 'county' then 4 when 'subcounty' then 5 when 'parish' then 6 else 7 end")
             ->orderBy('name')
             ->paginate(100);
 
         return response()->json([
             'units' => $units,
+            'unit_counts' => AdministrativeUnit::query()->select('level', DB::raw('count(*) as total'))->groupBy('level')->pluck('total', 'level')->map(fn ($total): int => (int) $total),
+            'latest_import' => DB::table('administrative_unit_imports')->latest()->first(),
             'regions' => PrisonRegion::query()->with('centres')->orderBy('name')->get(),
             'mappings' => DB::table('district_centre_mappings as mappings')
                 ->join('administrative_units as districts', 'districts.id', '=', 'mappings.district_id')
@@ -53,25 +96,56 @@ class GeographyController extends Controller
         ]);
     }
 
-    public function storeUnit(Request $request, AuditService $audit): JsonResponse
+    public function storeUnit(Request $request, AuditService $audit, AdministrativeUnitPathService $paths): JsonResponse
     {
         $data = $request->validate($this->unitRules());
         $this->validateParentLevel($data);
-        $unit = AdministrativeUnit::query()->create($data);
+        $unit = DB::transaction(function () use ($data, $paths): AdministrativeUnit {
+            $unit = AdministrativeUnit::query()->create($data);
+            $paths->rebuildForUnitAndDescendants($unit);
+
+            return $unit;
+        });
         $audit->record('geography.unit_created', $unit, after: $unit->only(['code', 'name', 'level', 'parent_id']), actor: $request->user());
 
         return response()->json(['unit' => $unit->load('parent')], 201);
     }
 
-    public function updateUnit(Request $request, AdministrativeUnit $unit, AuditService $audit): JsonResponse
+    public function updateUnit(Request $request, AdministrativeUnit $unit, AuditService $audit, AdministrativeUnitPathService $paths): JsonResponse
     {
         $data = $request->validate($this->unitRules($unit));
         $this->validateParentLevel($data, $unit);
         $before = $unit->toArray();
-        $unit->update($data);
+        DB::transaction(function () use ($unit, $data, $paths): void {
+            $unit->update($data);
+            $paths->rebuildForUnitAndDescendants($unit);
+        });
         $audit->record('geography.unit_updated', $unit, before: $before, after: $unit->toArray(), actor: $request->user());
 
         return response()->json(['unit' => $unit->fresh()->load('parent')]);
+    }
+
+    public function destroyUnit(Request $request, AdministrativeUnit $unit, AuditService $audit): JsonResponse
+    {
+        abort_if($unit->children()->exists(), 409, 'Move or remove this unit’s child units before deleting it.');
+        $addressColumns = ['district_id', 'county_id', 'subcounty_id', 'parish_id', 'village_id'];
+        $usedByAddress = DB::table('applicant_addresses')->where(function ($query) use ($addressColumns, $unit): void {
+            foreach ($addressColumns as $column) {
+                $query->orWhere($column, $unit->id);
+            }
+        })->exists();
+        abort_if(
+            $usedByAddress || DB::table('district_centre_mappings')->where('district_id', $unit->id)->exists(),
+            409,
+            'This unit is referenced by an application or centre mapping and cannot be deleted. Deactivate it instead.',
+        );
+
+        $before = $unit->toArray();
+        $id = $unit->id;
+        $unit->delete();
+        $audit->record('geography.unit_deleted', 'administrative_unit', $id, before: $before, actor: $request->user());
+
+        return response()->json(['status' => 'deleted']);
     }
 
     public function storeRegion(Request $request, AuditService $audit): JsonResponse
@@ -179,7 +253,7 @@ class GeographyController extends Controller
         return response()->download($path, "{$type}-template.xlsx")->deleteFileAfterSend(true);
     }
 
-    public function import(string $type, Request $request, AuditService $audit): JsonResponse
+    public function import(string $type, Request $request, AuditService $audit, AdministrativeUnitPathService $paths): JsonResponse
     {
         abort_unless(in_array($type, ['administrative-units', 'district-centre-mappings'], true), 404);
         $data = $request->validate(['file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:10240']]);
@@ -195,7 +269,7 @@ class GeographyController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($type, $normalised, $request): void {
+        DB::transaction(function () use ($type, $normalised, $request, $paths): void {
             if ($type === 'administrative-units') {
                 $order = array_flip(self::LEVELS);
                 usort($normalised, fn (array $left, array $right): int => $order[$left['level']] <=> $order[$right['level']]);
@@ -209,6 +283,14 @@ class GeographyController extends Controller
                         'effective_to' => $row['effective_to'] ?: null,
                         'active' => $row['active'],
                     ]);
+                }
+                $incomingCodes = array_column($normalised, 'code');
+                foreach ($normalised as $row) {
+                    if ($row['parent_code'] && in_array($row['parent_code'], $incomingCodes, true)) {
+                        continue;
+                    }
+                    $root = AdministrativeUnit::query()->where('code', $row['code'])->firstOrFail();
+                    $paths->rebuildForUnitAndDescendants($root);
                 }
             } else {
                 foreach ($normalised as $row) {
@@ -232,9 +314,10 @@ class GeographyController extends Controller
     {
         return [
             'parent_id' => ['nullable', 'exists:administrative_units,id', Rule::notIn(array_filter([$unit?->id]))],
-            'code' => ['required', 'string', 'max:50', Rule::unique('administrative_units')->ignore($unit?->id)],
+            'code' => ['required', 'string', 'max:120', Rule::unique('administrative_units')->ignore($unit?->id)],
             'name' => ['required', 'string', 'max:255'],
             'level' => ['required', Rule::in(self::LEVELS)],
+            'unit_type' => ['nullable', 'string', 'max:30'],
             'effective_from' => ['nullable', 'date'],
             'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'active' => ['sometimes', 'boolean'],
@@ -245,16 +328,27 @@ class GeographyController extends Controller
     private function validateParentLevel(array $data, ?AdministrativeUnit $unit = null): void
     {
         $level = $data['level'];
-        if ($level === 'district') {
+        if ($level === 'region') {
             Validator::make($data, ['parent_id' => ['nullable', 'prohibited']])->validate();
 
             return;
         }
+        if ($level === 'district' && blank($data['parent_id'] ?? null)) {
+            return;
+        }
         Validator::make($data, ['parent_id' => ['required']])->validate();
         $parent = AdministrativeUnit::query()->findOrFail($data['parent_id']);
-        $expected = self::LEVELS[array_search($level, self::LEVELS, true) - 1];
-        if ($parent->level !== $expected || ($unit && $parent->id === $unit->id)) {
-            Validator::make([], ['parent_id' => ['required']])->after(fn ($validator) => $validator->errors()->add('parent_id', "A {$level} must have a {$expected} parent."))->validate();
+        $expected = match ($level) {
+            'subregion' => ['region'],
+            'district' => ['subregion'],
+            'county' => ['district'],
+            'subcounty' => ['county', 'district'],
+            'parish' => ['subcounty'],
+            'village' => ['parish'],
+        };
+        if (! in_array($parent->level, $expected, true) || ($unit && $parent->id === $unit->id)) {
+            $labels = implode(' or ', $expected);
+            Validator::make([], ['parent_id' => ['required']])->after(fn ($validator) => $validator->errors()->add('parent_id', "A {$level} must have a {$labels} parent."))->validate();
         }
     }
 
@@ -335,20 +429,30 @@ class GeographyController extends Controller
                 'active' => $this->booleanValue($row['active'] ?? true),
             ];
             $validator = Validator::make($candidate, [
-                'code' => ['required', 'max:50'],
+                'code' => ['required', 'max:120'],
                 'name' => ['required', 'max:255'],
                 'level' => ['required', Rule::in(self::LEVELS)],
                 'effective_from' => ['nullable', 'date'],
                 'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
                 'active' => ['required', 'boolean'],
             ]);
-            if (! $validator->fails() && $candidate['level'] !== 'district') {
+            if (! $validator->fails()) {
                 $parent = AdministrativeUnit::query()->where('code', $candidate['parent_code'])->first();
-                $expected = self::LEVELS[array_search($candidate['level'], self::LEVELS, true) - 1];
                 $incomingParentIndex = array_search($candidate['parent_code'], $incomingCodes, true);
                 $incomingParentLevel = $incomingParentIndex === false ? null : strtolower(trim((string) ($rows[$incomingParentIndex]['level'] ?? '')));
-                if ($candidate['parent_code'] === '' || ($parent?->level !== $expected && $incomingParentLevel !== $expected)) {
-                    $validator->errors()->add('parent_code', "Parent must reference an existing or imported {$expected}.");
+                $expected = match ($candidate['level']) {
+                    'region' => [],
+                    'subregion' => ['region'],
+                    'district' => ['subregion'],
+                    'county' => ['district'],
+                    'subcounty' => ['county', 'district'],
+                    'parish' => ['subcounty'],
+                    'village' => ['parish'],
+                };
+                $actualParentLevel = $parent?->level ?? $incomingParentLevel;
+                $parentRequired = ! in_array($candidate['level'], ['region', 'district'], true);
+                if (($parentRequired && $candidate['parent_code'] === '') || ($candidate['parent_code'] !== '' && ! in_array($actualParentLevel, $expected, true))) {
+                    $validator->errors()->add('parent_code', 'Parent must reference an existing or imported '.implode(' or ', $expected).'.');
                 }
             }
             if (count(array_keys($incomingCodes, $candidate['code'], true)) > 1) {
@@ -412,5 +516,54 @@ class GeographyController extends Controller
         }
 
         return (string) $value;
+    }
+
+    /**
+     * @param  EloquentCollection<int, AdministrativeUnit>  $units
+     * @return list<array<string, mixed>>
+     */
+    private function unitPayloads(EloquentCollection $units): array
+    {
+        $levels = self::LEVELS;
+        $ancestorIds = $units->flatMap(function (AdministrativeUnit $unit) use ($levels): array {
+            if (! $unit->path) {
+                return [];
+            }
+
+            return collect($levels)
+                ->map(fn (string $level) => $unit->path->{"{$level}_id"})
+                ->filter()
+                ->all();
+        })->unique()->values();
+        $ancestors = AdministrativeUnit::query()
+            ->whereIn('id', $ancestorIds)
+            ->get(['id', 'code', 'name', 'level', 'unit_type'])
+            ->keyBy('id');
+
+        return $units->map(function (AdministrativeUnit $unit) use ($levels, $ancestors): array {
+            $lineage = [];
+            foreach ($levels as $level) {
+                $id = $unit->path?->{"{$level}_id"};
+                $ancestor = $id ? $ancestors->get($id) : null;
+                $lineage[$level] = $ancestor ? [
+                    'id' => $ancestor->id,
+                    'code' => $ancestor->code,
+                    'name' => $ancestor->name,
+                    'unit_type' => $ancestor->unit_type,
+                ] : null;
+            }
+
+            return [
+                'id' => $unit->id,
+                'code' => $unit->code,
+                'source_id' => $unit->source_id,
+                'name' => $unit->name,
+                'level' => $unit->level,
+                'unit_type' => $unit->unit_type,
+                'parent_id' => $unit->parent_id,
+                'full_address' => $unit->path?->full_address ?? $unit->name,
+                'lineage' => $lineage,
+            ];
+        })->values()->all();
     }
 }
