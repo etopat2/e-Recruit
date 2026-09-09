@@ -29,6 +29,7 @@
         <env name="DB_URL" value="" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="DOCUMENT_DISK" value="local" force="true"/>
+        <env name="FILESYSTEM_DISK" value="local" force="true"/>
         <env name="MALWARE_SCANNER" value="development" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
@@ -46,6 +47,7 @@
         <server name="DB_URL" value=""/>
         <server name="MAIL_MAILER" value="array"/>
         <server name="DOCUMENT_DISK" value="local"/>
+        <server name="FILESYSTEM_DISK" value="local"/>
         <server name="MALWARE_SCANNER" value="development"/>
         <server name="QUEUE_CONNECTION" value="sync"/>
         <server name="SESSION_DRIVER" value="array"/>

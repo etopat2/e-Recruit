@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useId } from 'vue'
+import InstitutionDirectoryField from './InstitutionDirectoryField.vue'
 import {
   educationLevelFor,
   educationLevelGroups,
@@ -11,6 +12,10 @@ import {
 export interface EducationRecordDraft {
   level: string
   institution: string
+  institution_id?: string | null
+  institution_not_listed?: boolean
+  institution_source?: string
+  institution_registration_status?: string
   completion_year: string
   result: string
 }
@@ -19,7 +24,14 @@ const records = defineModel<EducationRecordDraft[]>({ required: true })
 const formId = `education-records-${useId()}`
 
 function addRecord(): void {
-  records.value.push({ level: '', institution: '', completion_year: '', result: '' })
+  records.value.push({
+    level: '',
+    institution: '',
+    institution_id: null,
+    institution_not_listed: false,
+    completion_year: '',
+    result: '',
+  })
 }
 
 function removeRecord(index: number): void {
@@ -29,6 +41,11 @@ function removeRecord(index: number): void {
 function changeLevel(record: EducationRecordDraft, event: Event): void {
   record.level = (event.target as HTMLSelectElement).value
   record.result = ''
+  record.institution = ''
+  record.institution_id = null
+  record.institution_not_listed = false
+  record.institution_source = undefined
+  record.institution_registration_status = undefined
 }
 
 function guidanceFor(level: string): string {
@@ -61,9 +78,7 @@ function guidanceFor(level: string): string {
           </optgroup>
         </select>
       </label>
-      <label :for="`${formId}-institution-${index}`">Institution
-        <input :id="`${formId}-institution-${index}`" v-model="record.institution" required autocomplete="organization" />
-      </label>
+      <InstitutionDirectoryField v-model="records[index]" />
       <label :for="`${formId}-year-${index}`">Completion year
         <input :id="`${formId}-year-${index}`" v-model="record.completion_year" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="YYYY" />
       </label>

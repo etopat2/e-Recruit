@@ -19,6 +19,8 @@ RUN COMPOSER_PROCESS_TIMEOUT=1800 composer install --no-interaction --prefer-dis
 COPY php-development-performance.ini /usr/local/etc/php/conf.d/zz-performance.ini
 COPY . .
 RUN composer dump-autoload --optimize
+COPY docker/certs/sectigo-public-server-authentication-ca-dv-r36.crt /usr/local/share/ca-certificates/sectigo-public-server-authentication-ca-dv-r36.crt
+RUN update-ca-certificates
 EXPOSE 8000
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
 
@@ -35,13 +37,14 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libfreetype6 libicu72 libjpeg62-turbo libpng16-16 libpq5 libzip4 \
     && apt-get purge -y --auto-remove $PHPIZE_DEPS \
     && rm -rf /var/lib/apt/lists/*
-
 COPY --from=php-extensions /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 COPY --from=php-extensions /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
 COPY php-production-performance.ini /usr/local/etc/php/conf.d/zz-performance.ini
 WORKDIR /var/www/html
 COPY --from=vendor --chown=www-data:www-data /var/www/html /var/www/html
 RUN php artisan route:cache
+COPY docker/certs/sectigo-public-server-authentication-ca-dv-r36.crt /usr/local/share/ca-certificates/sectigo-public-server-authentication-ca-dv-r36.crt
+RUN update-ca-certificates
 USER www-data
 EXPOSE 9000
 CMD ["php-fpm"]

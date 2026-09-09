@@ -97,6 +97,7 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
   await page.route('**/api/v1/applications/app-1/submit', async (route) => { submitted = true; version += 1; await route.fulfill({ json: { data: application() } }) })
   await page.route('**/api/v1/notifications', async (route) => route.fulfill({ json: { notifications: { data: [] } } }))
   await page.route('**/api/v1/notifications/push/config', async (route) => route.fulfill({ json: { enabled: false, public_key: '' } }))
+  await page.route('**/api/v1/education-institutions*', async (route) => route.fulfill({ json: { data: [{ id: 'institution-1', name: 'Synthetic Secondary School', institution_type: 'Secondary School', district: 'Kampala', registration_number: 'EMIS-1', registration_status: 'Registered', operational_status: 'Active', source: 'moes_emis', source_url: 'https://emis.go.ug/emis/public-search', last_verified_at: '2026-09-09T00:00:00Z' }] } }))
 
   await page.goto('/')
   await page.getByRole('button', { name: 'Apply' }).click()
@@ -122,7 +123,8 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
   await levelSelect.selectOption('UCE')
   await expect(resultSelect).toContainText('Result 1 — certificate awarded')
   await resultSelect.selectOption('Result 1 (Certificate awarded)')
-  await page.getByRole('textbox', { name: 'Institution', exact: true }).fill('Synthetic Secondary School')
+  await page.getByRole('combobox', { name: 'Institution', exact: true }).fill('Synthetic Secondary School')
+  await page.getByRole('option', { name: /Synthetic Secondary School/ }).click()
   await page.getByRole('textbox', { name: 'Completion year', exact: true }).fill('2024')
   await page.getByRole('button', { name: /declaration/i }).click()
   await page.getByRole('checkbox', { name: /information and documents/i }).check()

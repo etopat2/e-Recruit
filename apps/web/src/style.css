@@ -127,6 +127,7 @@ form h2 { margin-bottom: .5rem; }
 label { display: flex; flex-direction: column; gap: .35rem; font-weight: 600; font-size: .9rem; margin-bottom: 1rem; }
 label span { color: var(--muted); font-weight: 400; }
 input, select, textarea { width: 100%; border: 1px solid #bfb4a2; border-radius: .38rem; background: white; color: var(--ink); padding: .72rem .78rem; }
+select[data-seven-option-expanded='true'] { max-height: calc(7 * 2.75rem); overflow-y: auto; position: relative; z-index: 15; box-shadow: 0 .75rem 1.75rem rgb(36 26 29 / 16%); }
 textarea { resize: vertical; }
 label small { color: var(--danger); }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1rem; }
@@ -174,6 +175,16 @@ td small { color: var(--muted); margin-top: .2rem; }
 .education-record-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .35rem; }
 .education-record-heading .text-button { margin: 0; }
 label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
+.institution-directory-field { min-width: 0; margin-bottom: 1rem; }
+.institution-directory-field > label:last-child { margin-bottom: 0; }
+.institution-search-results { max-height: calc(7 * 5rem); overflow-y: auto; margin: -.65rem 0 .8rem; padding: .35rem; background: var(--paper); border: 1px solid var(--line); border-radius: .5rem; box-shadow: 0 .8rem 1.8rem rgb(36 26 29 / 12%); }
+.institution-search-results button { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: .15rem; padding: .65rem .7rem; color: inherit; text-align: left; background: transparent; border: 0; border-radius: .35rem; cursor: pointer; }
+.institution-search-results button:hover, .institution-search-results button:focus-visible, .institution-search-results button[aria-selected='true'] { background: var(--cream); }
+.institution-search-results span, .institution-search-results small, .selected-institution span, .selected-institution small { color: var(--muted); font-weight: 400; }
+.institution-search-results span, .institution-search-results small { display: block; font-size: .78rem; }
+.institution-search-message { margin: 0; padding: .8rem; color: var(--muted); font-size: .85rem; }
+.selected-institution { display: flex; flex-direction: column; margin: -.55rem 0 .8rem; padding: .7rem .8rem; background: #edf8f1; border-left: 4px solid var(--success); border-radius: .35rem; font-size: .84rem; }
+.institution-not-listed { margin: .35rem 0 1rem; padding: .75rem; }
 .text-button { background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .text-button.danger { color: var(--danger); }
 .upload-row { display: grid; grid-template-columns: 1fr 1.5fr auto; align-items: end; gap: 1rem; }

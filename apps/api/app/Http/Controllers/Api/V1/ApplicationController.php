@@ -11,6 +11,7 @@ use App\Jobs\DeliverNotificationJob;
 use App\Models\Application;
 use App\Models\ApplicationStatusHistory;
 use App\Models\CampaignVersion;
+use App\Models\EducationInstitution;
 use App\Models\RecruitmentCampaign;
 use App\Models\RecruitmentPost;
 use App\Services\AuditService;
@@ -111,7 +112,9 @@ class ApplicationController extends Controller
     public function update(StoreApplicationDraftRequest $request, Application $application, AuditService $audit): ApplicationResource|JsonResponse
     {
         $data = $request->validated();
-        $draftData = $this->canonicalizeAdministrativeAddresses($request->input('draft_data'));
+        $draftData = $this->canonicalizeEducationInstitutions(
+            $this->canonicalizeAdministrativeAddresses($request->input('draft_data')),
+        );
         $updated = Application::query()
             ->whereKey($application->id)
             ->where('status', Application::StatusDraft)
@@ -159,6 +162,7 @@ class ApplicationController extends Controller
         $application->loadMissing(['applicant', 'campaign', 'post', 'documents']);
         $this->assertSubmissionComplete($application);
         $this->assertAdministrativeAddressesValid($application);
+        $this->assertEducationInstitutionsValid($application);
         DB::transaction(function () use ($application, $data, $referenceService, $canonicalJson, $request, $audit): void {
             $reference = $referenceService->allocate($application);
             $snapshot = [
@@ -311,6 +315,41 @@ class ApplicationController extends Controller
         }
     }
 
+    private function assertEducationInstitutionsValid(Application $application): void
+    {
+        $records = data_get($application->draft_data, 'education');
+        if (! is_array($records)) {
+            return;
+        }
+
+        foreach ($records as $index => $record) {
+            if (! is_array($record)) {
+                throw ValidationException::withMessages([
+                    "education.{$index}" => 'Complete this qualification record before submission.',
+                ]);
+            }
+
+            $requiredFields = ['level', 'institution', 'completion_year', 'result'];
+            if (collect($requiredFields)->contains(fn (string $field): bool => blank($record[$field] ?? null))) {
+                throw ValidationException::withMessages([
+                    "education.{$index}" => 'Complete the level, institution, completion year, and result before submission.',
+                ]);
+            }
+
+            if (($record['institution_not_listed'] ?? false) === true) {
+                continue;
+            }
+
+            $institutionId = $record['institution_id'] ?? null;
+            if (! is_string($institutionId)
+                || ! EducationInstitution::query()->whereKey($institutionId)->where('active', true)->exists()) {
+                throw ValidationException::withMessages([
+                    "education.{$index}.institution_id" => 'Choose an institution from the official directory or select “My institution is not listed”.',
+                ]);
+            }
+        }
+    }
+
     private function syncApplicantAddresses(Application $application): void
     {
         foreach (['address' => 'residence', 'origin' => 'origin', 'residence' => 'residence'] as $section => $type) {
@@ -364,6 +403,49 @@ class ApplicationController extends Controller
                 $draftData[$section][$level] = $id ? $units[$id] : null;
             }
             $draftData[$section]['full_address'] = $path?->full_address;
+        }
+
+        return $draftData;
+    }
+
+    /** @param array<string, mixed> $draftData
+     * @return array<string, mixed>
+     */
+    private function canonicalizeEducationInstitutions(array $draftData): array
+    {
+        $records = $draftData['education'] ?? null;
+        if (! is_array($records)) {
+            return $draftData;
+        }
+
+        foreach ($records as $index => $record) {
+            if (! is_array($record)) {
+                continue;
+            }
+
+            if (($record['institution_not_listed'] ?? false) === true) {
+                $draftData['education'][$index]['institution_id'] = null;
+                unset(
+                    $draftData['education'][$index]['institution_source'],
+                    $draftData['education'][$index]['institution_registration_status'],
+                );
+
+                continue;
+            }
+
+            $institutionId = $record['institution_id'] ?? null;
+            if (! is_string($institutionId)) {
+                continue;
+            }
+
+            $institution = EducationInstitution::query()->whereKey($institutionId)->where('active', true)->first();
+            if (! $institution) {
+                continue;
+            }
+
+            $draftData['education'][$index]['institution'] = $institution->name;
+            $draftData['education'][$index]['institution_source'] = $institution->source;
+            $draftData['education'][$index]['institution_registration_status'] = $institution->registration_status;
         }
 
         return $draftData;
