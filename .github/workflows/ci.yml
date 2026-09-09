@@ -52,7 +52,12 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium
+        run: |
+          # The hosted image's Google Chrome repository is unrelated to Playwright
+          # and can briefly publish mismatched package metadata during a rollout.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm audit --audit-level=high
 
