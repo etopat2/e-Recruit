@@ -56,7 +56,7 @@ jobs:
         run: |
           # The hosted image's Google Chrome repository is unrelated to Playwright
           # and can briefly publish mismatched package metadata during a rollout.
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          grep -rlZ 'dl.google.com/linux/chrome' /etc/apt/sources.list.d | xargs -0r sudo rm -f
           npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm audit --audit-level=high
