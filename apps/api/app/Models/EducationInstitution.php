@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\EducationInstitutionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class EducationInstitution extends Model
 {
-    /** @use HasFactory<\Database\Factories\EducationInstitutionFactory> */
+    /** @use HasFactory<EducationInstitutionFactory> */
     use HasFactory;
 
     use HasUlids;
