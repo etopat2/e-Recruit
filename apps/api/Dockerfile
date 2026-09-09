@@ -16,6 +16,7 @@ WORKDIR /var/www/html
 FROM php-extensions AS development
 COPY composer.json composer.lock ./
 RUN COMPOSER_PROCESS_TIMEOUT=1800 composer install --no-interaction --prefer-dist --no-progress --no-scripts
+COPY php-development-performance.ini /usr/local/etc/php/conf.d/zz-performance.ini
 COPY . .
 RUN composer dump-autoload --optimize
 EXPOSE 8000
@@ -37,8 +38,10 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 
 COPY --from=php-extensions /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 COPY --from=php-extensions /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+COPY php-production-performance.ini /usr/local/etc/php/conf.d/zz-performance.ini
 WORKDIR /var/www/html
 COPY --from=vendor --chown=www-data:www-data /var/www/html /var/www/html
+RUN php artisan route:cache
 USER www-data
 EXPOSE 9000
 CMD ["php-fpm"]

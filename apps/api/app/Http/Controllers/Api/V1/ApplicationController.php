@@ -14,7 +14,6 @@ use App\Models\CampaignVersion;
 use App\Models\RecruitmentCampaign;
 use App\Models\RecruitmentPost;
 use App\Services\AuditService;
-use App\Services\ScopeAuthorizer;
 use App\Support\CanonicalJson;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Endroid\QrCode\Encoding\Encoding;
@@ -32,10 +31,18 @@ use Illuminate\Validation\ValidationException;
 
 class ApplicationController extends Controller
 {
-    public function index(Request $request, ScopeAuthorizer $scopeAuthorizer): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         $user = $request->user()->loadMissing('applicant', 'scopes');
-        $query = Application::query()->with(['campaign', 'post', 'documents', 'statusHistory']);
+        $query = Application::query()
+            ->select([
+                'id', 'reference', 'status', 'active', 'recruitment_campaign_id',
+                'recruitment_post_id', 'submitted_at', 'entity_version', 'updated_at',
+            ])
+            ->with([
+                'campaign:id,code,name',
+                'post:id,recruitment_campaign_id,code,name,section_configuration,hard_copy_required',
+            ]);
         if ($user->user_type === 'applicant') {
             $query->where('applicant_id', $user->applicant?->id);
         } elseif (! $user->hasRole(...config('erecruit.security.national_roles'))) {
@@ -49,7 +56,7 @@ class ApplicationController extends Controller
             });
         }
 
-        return ApplicationResource::collection($query->latest()->paginate(25));
+        return ApplicationResource::collection($query->latest('updated_at')->paginate(25));
     }
 
     public function store(Request $request, AuditService $audit): ApplicationResource

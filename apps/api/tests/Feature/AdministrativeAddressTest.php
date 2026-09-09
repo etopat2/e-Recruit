@@ -132,6 +132,13 @@ class AdministrativeAddressTest extends TestCase
         ]);
         Sanctum::actingAs($administrator);
 
+        $this->getJson('/api/v1/admin/geography?level=region&summary=0')
+            ->assertOk()
+            ->assertJsonStructure(['units'])
+            ->assertJsonMissingPath('unit_counts')
+            ->assertJsonMissingPath('regions')
+            ->assertJsonMissingPath('mappings');
+
         $regionId = $this->postJson('/api/v1/admin/geography/units', [
             'code' => 'region:test', 'name' => 'TEST REGION', 'level' => 'region', 'unit_type' => 'region', 'active' => true,
         ])->assertCreated()->json('unit.id');

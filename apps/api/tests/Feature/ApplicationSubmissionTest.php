@@ -14,6 +14,23 @@ class ApplicationSubmissionTest extends TestCase
     use CreatesRecruitmentFixtures;
     use RefreshDatabase;
 
+    public function test_application_list_uses_the_lightweight_summary_shape(): void
+    {
+        $fixture = $this->recruitmentFixture([
+            'draft_data' => ['personal' => ['notes' => str_repeat('x', 5000)]],
+        ]);
+        Sanctum::actingAs($fixture['user']);
+
+        $this->getJson('/api/v1/applications')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $fixture['application']->id)
+            ->assertJsonPath('data.0.campaign.name', $fixture['campaign']->name)
+            ->assertJsonPath('data.0.post.name', $fixture['post']->name)
+            ->assertJsonMissingPath('data.0.draft_data')
+            ->assertJsonMissingPath('data.0.documents')
+            ->assertJsonMissingPath('data.0.timeline');
+    }
+
     public function test_campaign_defined_draft_sections_are_retained(): void
     {
         $fixture = $this->recruitmentFixture();

@@ -23,13 +23,17 @@ const router = createRouter({
   ],
 })
 
-let restored = false
+let restorePromise: Promise<void> | null = null
+
+function restoreSession(): Promise<void> {
+  if (!restorePromise) restorePromise = useSessionStore().restore()
+  return restorePromise
+}
+
 router.beforeEach(async (to) => {
   const session = useSessionStore()
-  if (!restored) {
-    await session.restore()
-    restored = true
-  }
+  if (to.meta.auth) await restoreSession()
+  else void restoreSession()
   if (session.user?.must_change_password && to.name !== 'access') return { name: 'access', query: { redirect: to.fullPath } }
   if (to.meta.auth && !session.authenticated) return { name: 'access', query: { redirect: to.fullPath } }
   if (to.meta.staff && !session.isStaff) return { name: 'dashboard' }

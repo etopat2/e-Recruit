@@ -59,7 +59,7 @@ async function findParents() {
   if (!parentLevels.value.length) return
   try {
     const responses = await Promise.all(parentLevels.value.map((level) => {
-      const query = new URLSearchParams({ level })
+      const query = new URLSearchParams({ level, summary: '0' })
       if (parentSearch.value.trim()) query.set('search', parentSearch.value.trim())
       return api<GeographyResponse>(`/admin/geography?${query}`)
     }))

@@ -13,9 +13,12 @@ const error = ref('')
 
 onMounted(async () => {
   try {
-    const response = await api<{ data: ApplicationRecord[] }>('/applications')
-    applications.value = response.data
-    if (session.isStaff) report.value = await api<Record<string, unknown>>('/reports/dashboard')
+    const [applicationResponse, dashboardResponse] = await Promise.all([
+      api<{ data: ApplicationRecord[] }>('/applications'),
+      session.isStaff ? api<Record<string, unknown>>('/reports/dashboard') : Promise.resolve(null),
+    ])
+    applications.value = applicationResponse.data
+    report.value = dashboardResponse
   } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Dashboard unavailable.' } finally { loading.value = false }
 })
 </script>

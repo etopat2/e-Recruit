@@ -143,6 +143,7 @@ services:
       - "${API_PORT:-8000}:8000"
     volumes:
       - ./apps/api:/var/www/html
+      - api-vendor:/var/www/html/vendor
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,6 +200,7 @@ services:
     command: php artisan queue:work --tries=5 --backoff=5 --timeout=120
     volumes:
       - ./apps/api:/var/www/html
+      - api-vendor:/var/www/html/vendor
     depends_on:
       postgres:
         condition: service_healthy
@@ -222,6 +224,7 @@ services:
     command: php artisan schedule:work
     volumes:
       - ./apps/api:/var/www/html
+      - api-vendor:/var/www/html/vendor
     depends_on:
       postgres:
         condition: service_healthy
@@ -276,6 +279,7 @@ volumes:
   redis-data:
   minio-data:
   web-node-modules:
+  api-vendor:
 
 networks:
   erecruit:

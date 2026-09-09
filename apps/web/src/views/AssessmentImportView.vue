@@ -13,8 +13,12 @@ const message = ref(''); const error = ref(''); const busy = ref(false)
 onMounted(load)
 async function load() {
   try {
-    definitions.value = (await api<{ data: Definition[] }>('/assessment-definitions')).data.filter((item) => item.component_type === 'written')
-    imports.value = (await api<{ data: { data: ImportRecord[] } }>('/assessment-score-imports')).data.data
+    const [definitionResponse, importResponse] = await Promise.all([
+      api<{ data: Definition[] }>('/assessment-definitions'),
+      api<{ data: { data: ImportRecord[] } }>('/assessment-score-imports'),
+    ])
+    definitions.value = definitionResponse.data.filter((item) => item.component_type === 'written')
+    imports.value = importResponse.data.data
     if (!form.assessment_definition_id) form.assessment_definition_id = definitions.value[0]?.id || ''
   } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Assessment imports could not be loaded.' }
 }

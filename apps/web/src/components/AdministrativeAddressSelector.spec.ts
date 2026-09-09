@@ -30,13 +30,15 @@ describe('AdministrativeAddressSelector', () => {
     }))
 
     const rendered = render(AdministrativeAddressSelector, { props: { modelValue: {} } })
-    await fireEvent.update(screen.getByPlaceholderText(/type at least 2 letters/i), 'Blue')
-    const result = await screen.findByRole('button', { name: /BLUE ROOM/i })
+    const villageControl = screen.getByRole('combobox', { name: /village \/ cell/i })
+    expect(screen.queryByText(/find a village anywhere/i)).not.toBeInTheDocument()
+    await fireEvent.update(villageControl, 'Blue')
+    const result = await screen.findByRole('option', { name: /BLUE ROOM/i })
     await fireEvent.click(result)
 
     await waitFor(() => expect(rendered.emitted()['update:modelValue']).toHaveLength(1))
     const updates = rendered.emitted()['update:modelValue'] as Array<[Record<string, string>]>
-    const selected = updates[0][0]
+    const selected = updates.at(-1)?.[0] as Record<string, string>
     expect(selected.village_id).toBe(lineage.village.id)
     expect(selected.parish).toBe('KISENYI I')
     expect(selected.district).toBe('KAMPALA')

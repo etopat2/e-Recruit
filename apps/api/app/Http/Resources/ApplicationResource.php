@@ -31,7 +31,11 @@ class ApplicationResource extends JsonResource
                 'sections' => $this->post->section_configuration,
                 'hard_copy_required' => $this->post->hard_copy_required,
             ]),
-            'draft_data' => $this->when($request->user()?->can('update', $this->resource) ?? false, $this->draft_data),
+            'draft_data' => $this->when(
+                array_key_exists('draft_data', $this->resource->getAttributes())
+                    && ($request->user()?->can('update', $this->resource) ?? false),
+                $this->draft_data,
+            ),
             'submitted_at' => $this->submitted_at,
             'entity_version' => $this->entity_version,
             'documents' => $this->whenLoaded('documents', fn () => $this->documents->map(fn ($document): array => [

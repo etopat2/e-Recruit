@@ -42,6 +42,8 @@ class GeographyController extends Controller
         }
 
         $query = AdministrativeUnit::query()
+            ->join('administrative_unit_paths as paths', 'paths.unit_id', '=', 'administrative_units.id')
+            ->select('administrative_units.*')
             ->where('level', $data['level'])
             ->where('active', true)
             ->with('path');
@@ -51,17 +53,17 @@ class GeographyController extends Controller
         }
         foreach (self::PATH_FILTERS as $filter) {
             if ($data[$filter] ?? null) {
-                $query->whereHas('path', fn ($pathQuery) => $pathQuery->where($filter, $data[$filter]));
+                $query->where("paths.{$filter}", $data[$filter]);
             }
         }
         if ($data['search'] ?? null) {
             $search = Str::lower(Str::ascii(trim($data['search'])));
             $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
-            $query->whereHas('path', fn ($pathQuery) => $pathQuery->where('search_text', 'like', "%{$escaped}%"))
-                ->orderByRaw('CASE WHEN LOWER(name) = ? THEN 0 WHEN LOWER(name) LIKE ? THEN 1 ELSE 2 END', [$search, "{$escaped}%"]);
+            $query->where('paths.search_text', 'like', "%{$escaped}%")
+                ->orderByRaw('CASE WHEN LOWER(administrative_units.name) = ? THEN 0 WHEN LOWER(administrative_units.name) LIKE ? THEN 1 ELSE 2 END', [$search, "{$escaped}%"]);
         }
 
-        $units = $query->orderBy('name')->limit($data['limit'] ?? 100)->get();
+        $units = $query->orderBy('administrative_units.name')->limit($data['limit'] ?? 100)->get();
 
         return response()->json(['data' => $this->unitPayloads($units)]);
     }
@@ -72,7 +74,9 @@ class GeographyController extends Controller
             'level' => ['nullable', Rule::in(self::LEVELS)],
             'parent_id' => ['nullable', 'ulid'],
             'search' => ['nullable', 'string', 'max:100'],
+            'summary' => ['nullable', 'boolean'],
         ]);
+        $includeSummary = (bool) ($data['summary'] ?? true);
         $units = AdministrativeUnit::query()
             ->when($data['level'] ?? null, fn ($query, $level) => $query->where('level', $level))
             ->when(array_key_exists('parent_id', $data), fn ($query) => $query->where('parent_id', $data['parent_id']))
@@ -82,18 +86,22 @@ class GeographyController extends Controller
             ->orderBy('name')
             ->paginate(100);
 
-        return response()->json([
-            'units' => $units,
-            'unit_counts' => AdministrativeUnit::query()->select('level', DB::raw('count(*) as total'))->groupBy('level')->pluck('total', 'level')->map(fn ($total): int => (int) $total),
-            'latest_import' => DB::table('administrative_unit_imports')->latest()->first(),
-            'regions' => PrisonRegion::query()->with('centres')->orderBy('name')->get(),
-            'mappings' => DB::table('district_centre_mappings as mappings')
-                ->join('administrative_units as districts', 'districts.id', '=', 'mappings.district_id')
-                ->join('recruitment_centres as centres', 'centres.id', '=', 'mappings.recruitment_centre_id')
-                ->leftJoin('recruitment_campaigns as campaigns', 'campaigns.id', '=', 'mappings.recruitment_campaign_id')
-                ->select('mappings.*', 'districts.code as district_code', 'districts.name as district_name', 'centres.code as centre_code', 'centres.name as centre_name', 'campaigns.code as campaign_code')
-                ->orderBy('districts.name')->get(),
-        ]);
+        $response = ['units' => $units];
+        if ($includeSummary) {
+            $response += [
+                'unit_counts' => AdministrativeUnit::query()->select('level', DB::raw('count(*) as total'))->groupBy('level')->pluck('total', 'level')->map(fn ($total): int => (int) $total),
+                'latest_import' => DB::table('administrative_unit_imports')->latest()->first(),
+                'regions' => PrisonRegion::query()->with('centres')->orderBy('name')->get(),
+                'mappings' => DB::table('district_centre_mappings as mappings')
+                    ->join('administrative_units as districts', 'districts.id', '=', 'mappings.district_id')
+                    ->join('recruitment_centres as centres', 'centres.id', '=', 'mappings.recruitment_centre_id')
+                    ->leftJoin('recruitment_campaigns as campaigns', 'campaigns.id', '=', 'mappings.recruitment_campaign_id')
+                    ->select('mappings.*', 'districts.code as district_code', 'districts.name as district_name', 'centres.code as centre_code', 'centres.name as centre_name', 'campaigns.code as campaign_code')
+                    ->orderBy('districts.name')->get(),
+            ];
+        }
+
+        return response()->json($response);
     }
 
     public function storeUnit(Request $request, AuditService $audit, AdministrativeUnitPathService $paths): JsonResponse
