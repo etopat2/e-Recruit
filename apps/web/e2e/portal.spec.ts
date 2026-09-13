@@ -48,6 +48,51 @@ test('temporary credentials must be replaced before application access', async (
   await expect(page).toHaveURL('http://127.0.0.1:4173/')
 })
 
+test('technical administrator lands on user administration after replacing a temporary password', async ({ page }) => {
+  const administrator = (mustChangePassword: boolean) => ({
+    id: 1,
+    name: 'Synthetic Technical Administrator',
+    email: 'system_administrator@example.test',
+    phone: null,
+    user_type: 'system_administrator',
+    status: 'active',
+    is_privileged: true,
+    mfa_confirmed: true,
+    must_change_password: mustChangePassword,
+    scopes: [],
+  })
+  let recruitmentDashboardRequests = 0
+
+  await page.route('**/api/v1/auth/login', async (route) => route.fulfill({
+    json: { token: 'temporary-technical-admin-token', requires_password_change: true, user: administrator(true) },
+  }))
+  await page.route('**/api/v1/auth/password', async (route) => route.fulfill({
+    json: { token: 'permanent-technical-admin-token', user: administrator(false) },
+  }))
+  await page.route('**/api/v1/admin/roles', async (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/admin/users*', async (route) => route.fulfill({
+    json: { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } },
+  }))
+  await page.route('**/api/v1/reports/dashboard', async (route) => {
+    recruitmentDashboardRequests += 1
+    await route.fulfill({ status: 403, json: { message: 'Forbidden.' } })
+  })
+
+  await page.goto('/access')
+  await page.getByLabel('Email address or phone').fill('system_administrator@example.test')
+  await page.getByLabel('Password', { exact: true }).fill('ChangeMe!2026')
+  await page.locator('button.button.primary.full').click()
+  await expect(page.getByRole('heading', { name: 'Replace the temporary password' })).toBeVisible()
+  await page.locator('input[autocomplete="new-password"]').nth(0).fill('PermanentTechnicalPass2026')
+  await page.locator('input[autocomplete="new-password"]').nth(1).fill('PermanentTechnicalPass2026')
+  await page.getByRole('button', { name: 'Change password and continue' }).click()
+
+  await expect(page).toHaveURL('http://127.0.0.1:4173/staff/users')
+  await expect(page.getByRole('heading', { name: 'User and administrator accounts' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Dashboard' })).toHaveCount(0)
+  expect(recruitmentDashboardRequests).toBe(0)
+})
+
 test('technical administrator provisions and secures staff accounts', async ({ page }) => {
   await technicalAdministratorSession(page)
   const roles = [

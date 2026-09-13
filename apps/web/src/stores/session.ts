@@ -8,6 +8,7 @@ export const useSessionStore = defineStore('session', {
     authenticated: (state) => state.user !== null,
     isApplicant: (state) => state.user?.user_type === 'applicant',
     isStaff: (state) => state.user !== null && state.user.user_type !== 'applicant',
+    homePath: (state) => state.user?.user_type === 'system_administrator' ? '/staff/users' : '/dashboard',
   },
   actions: {
     async restore() {

@@ -36,7 +36,7 @@ async function destination() {
     const response = await api<{ data: { id: string } }>('/applications', { method: 'POST', ...jsonBody({ campaign_id: route.query.campaign, post_id: route.query.post }) })
     await router.push(`/applications/${response.data.id}`)
   } else {
-    await router.push(String(route.query.redirect || '/dashboard'))
+    await router.push(String(route.query.redirect || session.homePath))
   }
 }
 

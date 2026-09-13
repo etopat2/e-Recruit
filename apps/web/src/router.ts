@@ -36,10 +36,11 @@ router.beforeEach(async (to) => {
   else void restoreSession()
   if (session.user?.must_change_password && to.name !== 'access') return { name: 'access', query: { redirect: to.fullPath } }
   if (to.meta.auth && !session.authenticated) return { name: 'access', query: { redirect: to.fullPath } }
+  if (to.name === 'dashboard' && session.user?.user_type === 'system_administrator') return { name: 'user-administration' }
   if (to.meta.staff && !session.isStaff) return { name: 'dashboard' }
   if (to.meta.technicalAdmin && session.user?.user_type !== 'system_administrator') return { name: 'dashboard' }
   if (to.meta.applicant && !session.isApplicant) return { name: 'dashboard' }
-  if (to.name === 'access' && session.authenticated && !session.user?.must_change_password) return { name: 'dashboard' }
+  if (to.name === 'access' && session.authenticated && !session.user?.must_change_password) return { path: session.homePath }
   return true
 })
 
