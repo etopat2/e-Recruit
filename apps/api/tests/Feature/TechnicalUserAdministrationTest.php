@@ -7,7 +7,9 @@ use App\Models\User;
 use App\Services\ScopeAuthorizer;
 use App\Services\TotpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Mockery\MockInterface;
 use Tests\CreatesRecruitmentFixtures;
@@ -113,6 +115,11 @@ class TechnicalUserAdministrationTest extends TestCase
         $this->withToken($enrolmentToken)->postJson('/api/v1/auth/mfa/enrol', [
             'password' => self::TemporaryPassword,
         ])->assertOk()->assertJsonPath('provisioning_uri', 'otpauth://synthetic');
+        $this->assertSame('text', Schema::getColumnType('users', 'mfa_recovery_codes'));
+        $storedRecoveryCodes = DB::table('users')->where('id', $user->id)->value('mfa_recovery_codes');
+        $this->assertIsString($storedRecoveryCodes);
+        $this->assertStringNotContainsString(hash('sha256', 'SYNTH-ETIC1'), $storedRecoveryCodes);
+        $this->assertSame([hash('sha256', 'SYNTH-ETIC1')], $user->fresh()->mfa_recovery_codes);
         $confirmed = $this->withToken($enrolmentToken)->postJson('/api/v1/auth/mfa/confirm', [
             'code' => '123456',
         ])->assertOk()->assertJsonPath('requires_password_change', true);
