@@ -131,6 +131,79 @@ class TechnicalUserAdministrationTest extends TestCase
         $this->assertNotNull($user->fresh()->mfa_confirmed_at);
     }
 
+    public function test_interrupted_mfa_enrolment_can_be_restarted_without_a_totp_code(): void
+    {
+        $role = $this->role('system_administrator', 'System Administrator');
+        $user = User::factory()->create([
+            'email' => 'interrupted-mfa@example.test',
+            'password' => self::TemporaryPassword,
+            'user_type' => $role->code,
+            'is_privileged' => true,
+            'mfa_confirmed_at' => null,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $login = $this->postJson('/api/v1/auth/login', [
+            'identity' => $user->email,
+            'password' => self::TemporaryPassword,
+            'device_name' => 'Synthetic browser',
+        ])->assertOk()->assertJsonPath('requires_mfa_enrolment', true);
+        $this->withToken($login->json('token'))->postJson('/api/v1/auth/mfa/enrol', [
+            'password' => self::TemporaryPassword,
+        ])->assertOk()->assertJsonStructure(['provisioning_uri', 'recovery_codes']);
+        $firstSecret = $user->fresh()->mfa_secret;
+
+        $returningLogin = $this->postJson('/api/v1/auth/login', [
+            'identity' => $user->email,
+            'password' => self::TemporaryPassword,
+            'device_name' => 'Returning synthetic browser',
+        ])->assertOk()->assertJsonPath('requires_mfa_enrolment', true);
+        $this->withToken($returningLogin->json('token'))->postJson('/api/v1/auth/mfa/restart', [
+            'password' => self::TemporaryPassword,
+        ])->assertOk()->assertJsonStructure(['provisioning_uri', 'recovery_codes']);
+
+        $freshUser = $user->fresh();
+        $this->assertNotSame($firstSecret, $freshUser->mfa_secret);
+        $this->assertNull($freshUser->mfa_confirmed_at);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $user->id,
+            'action' => 'auth.mfa_enrolment_restarted',
+            'entity_id' => (string) $user->id,
+        ]);
+    }
+
+    public function test_confirmed_privileged_user_can_sign_in_with_a_single_use_recovery_code(): void
+    {
+        $role = $this->role('system_administrator', 'System Administrator');
+        $recoveryCode = 'SYNTH-REC01';
+        $user = User::factory()->create([
+            'email' => 'recovery-login@example.test',
+            'password' => self::PermanentPassword,
+            'user_type' => $role->code,
+            'is_privileged' => true,
+            'mfa_secret' => app(TotpService::class)->generateSecret(),
+            'mfa_recovery_codes' => [hash('sha256', $recoveryCode)],
+            'mfa_confirmed_at' => now(),
+            'must_change_password' => false,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $this->postJson('/api/v1/auth/login', [
+            'identity' => $user->email,
+            'password' => self::PermanentPassword,
+            'device_name' => 'Recovery browser',
+            'recovery_code' => mb_strtolower($recoveryCode),
+        ])->assertOk()->assertJsonStructure(['token', 'user']);
+
+        $this->assertSame([], $user->fresh()->mfa_recovery_codes);
+        $this->postJson('/api/v1/auth/login', [
+            'identity' => $user->email,
+            'password' => self::PermanentPassword,
+            'device_name' => 'Second recovery browser',
+            'recovery_code' => $recoveryCode,
+        ])->assertUnprocessable();
+    }
+
     public function test_technical_administrator_manages_role_status_scopes_and_session_revocation(): void
     {
         $administrator = $this->technicalAdministrator();

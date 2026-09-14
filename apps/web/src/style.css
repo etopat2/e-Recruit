@@ -146,8 +146,18 @@ label small { color: var(--danger); }
 .checkbox { flex-direction: row; align-items: flex-start; gap: .7rem; padding: 1rem; border: 1px solid var(--line); border-radius: .5rem; }
 .checkbox input { width: 1.2rem; margin-top: .2rem; }
 .mfa-step { max-width: 650px; }
+.mfa-setup-grid { display: grid; grid-template-columns: minmax(220px, 280px) 1fr; align-items: center; gap: 1.25rem; margin: 1.5rem 0; }
+.mfa-qr { min-height: 260px; display: grid; place-items: center; padding: .6rem; border: 1px solid var(--line); border-radius: .65rem; background: white; }
+.mfa-qr img { display: block; width: min(260px, 100%); height: auto; }
+.mfa-setup-grid details { padding: .8rem; border: 1px solid var(--line); border-radius: .45rem; background: var(--cream); }
+.mfa-setup-grid summary { color: var(--burgundy); cursor: pointer; font-weight: 700; }
+.mfa-setup-grid details p { margin: .65rem 0; color: var(--muted); font-size: .85rem; }
+.mfa-setup-grid details code { display: block; padding: .65rem; background: white; }
+.totp-countdown { margin: 1rem 0 .5rem; color: var(--muted); font-size: .86rem; }
+.recovery-toggle { margin-top: 1rem; }
 .recovery-box { display: grid; grid-template-columns: 1fr 1fr; padding: 1rem; gap: .5rem; background: #eee6d7; margin: 1rem 0; }
-.recovery-box strong { grid-column: 1/-1; }
+.recovery-box strong, .recovery-box > span { grid-column: 1/-1; }
+.recovery-box > span { color: var(--muted); font-size: .84rem; }
 .break-all { overflow-wrap: anywhere; }
 
 .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2.5rem; }
@@ -339,6 +349,7 @@ label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
   .wizard-panel, .evidence-panel { padding: 1.2rem; }
   .document-rail { grid-template-columns: 1fr; }
   .recovery-box { grid-template-columns: 1fr; }
+  .mfa-setup-grid { grid-template-columns: 1fr; }
   .account-filters { grid-template-columns: 1fr; }
   .dialog-backdrop { align-items: end; padding: 0; }
   .dialog-panel.mobile-sheet { width: 100%; max-height: calc(100dvh - env(safe-area-inset-top)); border-radius: 1rem 1rem 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }

@@ -87,7 +87,7 @@ class AuthController extends Controller
         }
 
         if ($user->is_privileged) {
-            if ($user->mfa_secret === null) {
+            if ($user->mfa_secret === null || $user->mfa_confirmed_at === null) {
                 $token = $user->createToken('mfa-enrolment', ['mfa:enrol'], now()->addMinutes(15))->plainTextToken;
 
                 return response()->json([
@@ -186,6 +186,23 @@ class AuthController extends Controller
         $validated = $request->validate(['password' => ['required', 'current_password']]);
         unset($validated);
         $user = $request->user();
+        abort_if($user->mfa_confirmed_at !== null, 409, 'MFA is already active. Ask a technical administrator to authorise a reset.');
+
+        return $this->issueMfaEnrollment($user, $totpService, $audit, 'auth.mfa_enrolled');
+    }
+
+    public function restartMfaEnrollment(Request $request, TotpService $totpService, AuditService $audit): JsonResponse
+    {
+        $validated = $request->validate(['password' => ['required', 'current_password']]);
+        unset($validated);
+        $user = $request->user();
+        abort_if($user->mfa_confirmed_at !== null, 409, 'Active MFA cannot be restarted without an authorised administrator reset.');
+
+        return $this->issueMfaEnrollment($user, $totpService, $audit, 'auth.mfa_enrolment_restarted');
+    }
+
+    private function issueMfaEnrollment(User $user, TotpService $totpService, AuditService $audit, string $auditAction): JsonResponse
+    {
         $secret = $totpService->generateSecret();
         $recoveryCodes = $totpService->generateRecoveryCodes();
         $user->forceFill([
@@ -193,7 +210,7 @@ class AuthController extends Controller
             'mfa_recovery_codes' => $recoveryCodes['hashed'],
             'mfa_confirmed_at' => null,
         ])->save();
-        $audit->record('auth.mfa_enrolled', $user, actor: $user);
+        $audit->record($auditAction, $user, actor: $user);
 
         return response()->json([
             'provisioning_uri' => $totpService->provisioningUri($secret, $user->email ?: $user->phone),

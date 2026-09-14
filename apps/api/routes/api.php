@@ -40,8 +40,9 @@ Route::prefix('v1')->name('api.')->group(function (): void {
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('auth/me', [AuthController::class, 'me'])->name('auth.me');
         Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
-        Route::post('auth/mfa/enrol', [AuthController::class, 'enrolMfa'])->name('auth.mfa.enrol');
-        Route::post('auth/mfa/confirm', [AuthController::class, 'confirmMfa'])->name('auth.mfa.confirm');
+        Route::post('auth/mfa/enrol', [AuthController::class, 'enrolMfa'])->middleware('throttle:otp')->name('auth.mfa.enrol');
+        Route::post('auth/mfa/restart', [AuthController::class, 'restartMfaEnrollment'])->middleware('throttle:otp')->name('auth.mfa.restart');
+        Route::post('auth/mfa/confirm', [AuthController::class, 'confirmMfa'])->middleware('throttle:otp')->name('auth.mfa.confirm');
         Route::put('auth/password', [AuthController::class, 'changePassword'])->name('auth.password.update');
         Route::middleware(['password.changed', 'mfa'])->group(function (): void {
             Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');

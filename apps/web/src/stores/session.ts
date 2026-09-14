@@ -25,10 +25,10 @@ export const useSessionStore = defineStore('session', {
         this.loading = false
       }
     },
-    async login(identity: string, password: string, totpCode = '') {
+    async login(identity: string, password: string, totpCode = '', recoveryCode = '') {
       const response = await api<{ token: string; user: User; requires_mfa_enrolment?: boolean; requires_password_change?: boolean }>('/auth/login', {
         method: 'POST',
-        ...jsonBody({ identity, password, device_name: navigator.userAgent.slice(0, 90), totp_code: totpCode || undefined }),
+        ...jsonBody({ identity, password, device_name: navigator.userAgent.slice(0, 90), totp_code: totpCode || undefined, recovery_code: recoveryCode || undefined }),
       })
       setAuthToken(response.token)
       this.user = response.user
