@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api, ApiError, jsonBody } from '../lib/api'
+import Dialog from '../components/Dialog.vue'
 import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
 
 interface RoleRecord { code: string; name: string; is_decision_role: boolean; is_privileged: boolean }
@@ -36,6 +37,8 @@ const creation = reactive({ name: '', email: '', phone: '', role_code: '' })
 const edit = reactive({ name: '', email: '', phone: '', status: 'active', role_code: '' })
 const reason = ref('')
 const scopesText = ref('[]')
+type AccountDialog = 'create' | 'edit' | 'scopes' | 'security'
+const activeDialog = ref<AccountDialog | ''>('')
 const staffRoles = computed(() => roles.value.filter((role) => role.code !== 'applicant'))
 
 function roleOptions(availableRoles: RoleRecord[], includeAll = false): ComboboxOption[] {
@@ -131,6 +134,7 @@ async function createUser() {
     temporaryPassword.value = response.temporary_password; message.value = response.message; selectUser(response.user)
     temporaryPassword.value = response.temporary_password; message.value = response.message
     creation.name = ''; creation.email = ''; creation.phone = ''
+    activeDialog.value = ''
   } catch (problem) { finish(problem); return }
   finish()
 }
@@ -149,7 +153,7 @@ async function saveAccount() {
     if (edit.email) body.email = edit.email
     if (selected.value.user_type !== 'applicant') body.role_code = edit.role_code
     const response = await api<{ user: ManagedUser }>(`/admin/users/${selected.value.id}`, { method: 'PUT', ...jsonBody(body) })
-    acceptUpdatedUser(response.user); message.value = 'Account details and access state were updated.'
+    acceptUpdatedUser(response.user); message.value = 'Account details and access state were updated.'; activeDialog.value = ''
   } catch (problem) { finish(problem); return }
   finish()
 }
@@ -164,7 +168,7 @@ async function saveScopes() {
       method: 'PUT',
       ...jsonBody({ scopes: parsed, entity_version: selected.value.entity_version, reason: reason.value }),
     })
-    acceptUpdatedUser(response.user); message.value = 'Account scopes were replaced and audited.'
+    acceptUpdatedUser(response.user); message.value = 'Account scopes were replaced and audited.'; activeDialog.value = ''
   } catch (problem) { finish(problem); return }
   finish()
 }
@@ -179,6 +183,7 @@ async function sensitiveAction(path: 'password-reset' | 'mfa-reset' | 'sessions/
     })
     acceptUpdatedUser(response.user); message.value = response.message
     temporaryPassword.value = response.temporary_password || ''
+    activeDialog.value = ''
   } catch (problem) { finish(problem); return }
   finish()
 }
@@ -189,14 +194,9 @@ async function sensitiveAction(path: 'password-reset' | 'mfa-reset' | 'sessions/
   <div v-if="message" class="alert success page-alert" role="status">{{ message }}</div><div v-if="error" class="alert error page-alert" role="alert">{{ error }}</div>
   <div v-if="temporaryPassword" class="one-time-secret" role="status"><strong>Copy this temporary password now</strong><code>{{ temporaryPassword }}</code><span>It will not be shown again. Send it through an approved secure channel; the user must replace it at first sign-in.</span></div>
 
-  <section class="account-admin-layout">
-    <div class="form-panel">
-      <h2>Create a staff account</h2><p class="form-intro">Applicant accounts are created through registration. Staff receive a one-time random password.</p>
-      <form @submit.prevent="createUser"><label>Full name<input v-model="creation.name" required /></label><label>Email address<input v-model="creation.email" type="email" required /></label><label>Phone <span>(optional)</span><input v-model="creation.phone" type="tel" /></label><FloatingCombobox label="Initial role" :model-value="roleName(creation.role_code, staffRoles)" :options="roleOptions(staffRoles)" required placeholder="Search or select role" @update:model-value="creation.role_code = ''" @select="creation.role_code = $event.value" /><button class="button primary full" :disabled="busy">Create secure account</button></form>
-    </div>
-
+  <section class="content-section compact-top">
     <div class="form-panel account-directory">
-      <div class="section-heading"><div><p class="eyebrow">Directory</p><h2>{{ total }} account(s)</h2></div></div>
+      <div class="section-heading"><div><p class="eyebrow">Directory</p><h2>{{ total }} account(s)</h2></div><button type="button" class="button primary" @click="activeDialog = 'create'">Create staff account</button></div>
       <form class="account-filters" @submit.prevent="loadUsers"><label>Search<input v-model="filters.search" placeholder="Name, email, or phone" /></label><label>Status<select v-model="filters.status"><option value="">All</option><option value="active">Active</option><option value="disabled">Disabled</option></select></label><FloatingCombobox label="Role" :model-value="roleName(filters.role)" :options="roleOptions(roles, true)" placeholder="All roles" @update:model-value="filters.role = ''" @select="filters.role = $event.value" /><button class="button secondary compact">Apply</button></form>
       <div class="table-wrap"><table><thead><tr><th>Account</th><th>Role</th><th>Security</th><th></th></tr></thead><tbody><tr v-for="user in users" :key="user.id"><td><strong>{{ user.name }}</strong><small>{{ user.email || user.phone || 'No contact value' }}</small><span class="status-badge" :data-status="user.status">{{ user.status }}</span></td><td>{{ user.roles[0]?.name || user.user_type }}</td><td><small>{{ user.is_privileged ? (user.mfa_confirmed ? 'MFA active' : 'MFA pending') : 'Standard' }}</small><small v-if="user.must_change_password">Password change required</small></td><td><button class="button secondary compact" type="button" @click="selectUser(user)">Manage</button></td></tr><tr v-if="!users.length"><td colspan="4" class="empty-state compact">No accounts match these filters.</td></tr></tbody></table></div>
     </div>
@@ -204,10 +204,11 @@ async function sensitiveAction(path: 'password-reset' | 'mfa-reset' | 'sessions/
 
   <section v-if="selected" class="content-section compact-top">
     <div class="section-heading"><div><p class="eyebrow">Selected account #{{ selected.id }}</p><h2>{{ selected.name }}</h2><p>Version {{ selected.entity_version }} · last login {{ selected.last_login_at || 'never' }}</p></div><span class="status-badge" :data-status="selected.status">{{ selected.status }}</span></div>
-    <div class="account-actions-layout">
-      <form class="form-panel" @submit.prevent="saveAccount"><h3>Identity and access</h3><label>Name<input v-model="edit.name" required /></label><label>Email<input v-model="edit.email" type="email" :required="selected.user_type !== 'applicant'" /></label><label>Phone<input v-model="edit.phone" type="tel" /></label><label>Status<select v-model="edit.status"><option value="active">Active</option><option value="disabled">Disabled</option></select></label><FloatingCombobox label="Role" :model-value="roleName(edit.role_code, selected.user_type === 'applicant' ? roles : staffRoles)" :options="roleOptions(selected.user_type === 'applicant' ? roles : staffRoles)" :disabled="selected.user_type === 'applicant'" placeholder="Search or select role" @update:model-value="edit.role_code = ''" @select="edit.role_code = $event.value" /><label>Reason for change<textarea v-model="reason" minlength="10" rows="3" required /></label><button class="button primary full" :disabled="busy">Save account</button></form>
-      <div class="form-panel"><h3>Security operations</h3><p class="form-intro">All active browser sessions and API tokens are revoked by credential resets.</p><label>Reason for security action<textarea v-model="reason" minlength="10" rows="3" required /></label><div class="stacked-actions"><button class="button secondary" type="button" :disabled="busy || reason.length < 10" @click="sensitiveAction('password-reset')">Issue temporary password</button><button class="button secondary" type="button" :disabled="busy || reason.length < 10 || !selected.mfa_enabled" @click="sensitiveAction('mfa-reset')">Reset MFA</button><button class="button secondary" type="button" :disabled="busy || reason.length < 10" @click="sensitiveAction('sessions/revoke')">Revoke all sessions</button></div></div>
-      <form v-if="selected.user_type !== 'applicant'" class="form-panel" @submit.prevent="saveScopes"><h3>Authorisation scopes</h3><p class="form-intro">Replace the complete scope set using reviewed JSON. Non-national scopes require a scope ID.</p><label>Scopes JSON<textarea v-model="scopesText" class="scope-editor" rows="14" spellcheck="false" required /></label><label>Reason for scope change<textarea v-model="reason" minlength="10" rows="3" required /></label><button class="button primary full" :disabled="busy">Replace scopes</button></form>
-    </div>
+    <div class="action-launcher-grid"><button type="button" class="action-launcher" @click="activeDialog = 'edit'"><strong>Identity and access</strong><span>Edit profile, status, and staff role with an audited reason.</span></button><button type="button" class="action-launcher danger-zone" @click="activeDialog = 'security'"><strong>Security operations</strong><span>Reset password/MFA or revoke all active sessions.</span></button><button v-if="selected.user_type !== 'applicant'" type="button" class="action-launcher" @click="activeDialog = 'scopes'"><strong>Authorisation scopes</strong><span>Replace this staff account’s complete reviewed scope set.</span></button></div>
   </section>
+
+  <Dialog :open="activeDialog === 'create'" title="Create a staff account" description="Applicant accounts are created through registration. Staff receive a one-time random password." :close-on-backdrop="false" mobile-sheet @close="activeDialog = ''"><form @submit.prevent="createUser"><label>Full name<input v-model="creation.name" required data-dialog-initial-focus /></label><label>Email address<input v-model="creation.email" type="email" required /></label><label>Phone <span>(optional)</span><input v-model="creation.phone" type="tel" /></label><FloatingCombobox label="Initial role" :model-value="roleName(creation.role_code, staffRoles)" :options="roleOptions(staffRoles)" required placeholder="Search or select role" @update:model-value="creation.role_code = ''" @select="creation.role_code = $event.value" /><button class="button primary full" :disabled="busy">Create secure account</button></form></Dialog>
+  <Dialog :open="activeDialog === 'edit'" :title="selected ? `Edit ${selected.name}` : 'Edit account'" :close-on-backdrop="false" mobile-sheet @close="activeDialog = ''"><form v-if="selected" @submit.prevent="saveAccount"><label>Name<input v-model="edit.name" required data-dialog-initial-focus /></label><label>Email<input v-model="edit.email" type="email" :required="selected.user_type !== 'applicant'" /></label><label>Phone<input v-model="edit.phone" type="tel" /></label><label>Status<select v-model="edit.status"><option value="active">Active</option><option value="disabled">Disabled</option></select></label><FloatingCombobox label="Role" :model-value="roleName(edit.role_code, selected.user_type === 'applicant' ? roles : staffRoles)" :options="roleOptions(selected.user_type === 'applicant' ? roles : staffRoles)" :disabled="selected.user_type === 'applicant'" placeholder="Search or select role" @update:model-value="edit.role_code = ''" @select="edit.role_code = $event.value" /><label>Reason for change<textarea v-model="reason" minlength="10" rows="3" required /></label><button class="button primary full" :disabled="busy">Save account</button></form></Dialog>
+  <Dialog :open="activeDialog === 'security'" :title="selected ? `Security operations for ${selected.name}` : 'Security operations'" description="Credential resets revoke all active browser sessions and API tokens." :close-on-backdrop="false" mobile-sheet @close="activeDialog = ''"><div v-if="selected"><label>Reason for security action<textarea v-model="reason" minlength="10" rows="3" required data-dialog-initial-focus /></label><div class="stacked-actions"><button class="button secondary" type="button" :disabled="busy || reason.length < 10" @click="sensitiveAction('password-reset')">Issue temporary password</button><button class="button secondary" type="button" :disabled="busy || reason.length < 10 || !selected.mfa_enabled" @click="sensitiveAction('mfa-reset')">Reset MFA</button><button class="button secondary" type="button" :disabled="busy || reason.length < 10" @click="sensitiveAction('sessions/revoke')">Revoke all sessions</button></div></div></Dialog>
+  <Dialog :open="activeDialog === 'scopes'" :title="selected ? `Authorisation scopes for ${selected.name}` : 'Authorisation scopes'" description="Replace the complete scope set using reviewed JSON. Non-national scopes require a scope ID." :close-on-backdrop="false" mobile-sheet @close="activeDialog = ''"><form v-if="selected && selected.user_type !== 'applicant'" @submit.prevent="saveScopes"><label>Scopes JSON<textarea v-model="scopesText" class="scope-editor" rows="14" spellcheck="false" required data-dialog-initial-focus /></label><label>Reason for scope change<textarea v-model="reason" minlength="10" rows="3" required /></label><button class="button primary full" :disabled="busy">Replace scopes</button></form></Dialog>
 </template>
