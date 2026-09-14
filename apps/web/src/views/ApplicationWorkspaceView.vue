@@ -54,6 +54,9 @@ onMounted(async () => {
     for (const section of Object.keys(response.data.post.sections || {})) {
       if (draft[section] === undefined) draft[section] = {}
     }
+    if (!Object.keys(response.data.post.sections || {}).includes(activeSection.value)) {
+      activeSection.value = Object.keys(response.data.post.sections || {})[0] || 'personal'
+    }
     Object.assign(draft, response.data.draft_data || {})
     const local = await getLocalDraft(response.data.id)
     if (local && new Date(local.updatedAt) > new Date(response.data.submitted_at || 0) && local.entityVersion === response.data.entity_version) Object.assign(draft, local.data)
