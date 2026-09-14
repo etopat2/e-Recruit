@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import FieldError from '../components/FieldError.vue'
+import FormAlert from '../components/FormAlert.vue'
+import LoadingIndicator from '../components/LoadingIndicator.vue'
+import SkeletonBlock from '../components/SkeletonBlock.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import AdministrativeAddressSelector from '../components/AdministrativeAddressSelector.vue'
 import EducationRecordsForm from '../components/EducationRecordsForm.vue'
@@ -28,6 +32,7 @@ const draft = reactive<ApplicationDraft>({
 })
 const activeSection = ref('personal'); const saveState = ref<'saved' | 'saving' | 'offline' | 'conflict'>('saved')
 const error = ref(''); const uploadType = ref('national_id'); const uploadFile = ref<File | null>(null); const uploadProgress = ref(0); const submitting = ref(false)
+const validationErrors = ref<Record<string, string[]>>({}); const loading = ref(true)
 const sections = computed(() => Object.keys(application.value?.post.sections || { personal: true, address: true, education: true, declaration: true }))
 const activeFields = computed<FormFields>(() => {
   const section = draft[activeSection.value]
@@ -52,7 +57,7 @@ onMounted(async () => {
     Object.assign(draft, response.data.draft_data || {})
     const local = await getLocalDraft(response.data.id)
     if (local && new Date(local.updatedAt) > new Date(response.data.submitted_at || 0) && local.entityVersion === response.data.entity_version) Object.assign(draft, local.data)
-  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Application could not be loaded.' }
+  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Application could not be loaded.' } finally { loading.value = false }
 })
 
 watch(draft, () => {
@@ -71,6 +76,7 @@ async function saveDraft() {
     saveState.value = 'saved'
     await putLocalDraft({ id: application.value.id, entityVersion: response.data.entity_version, data: JSON.parse(JSON.stringify(draft)), updatedAt: new Date().toISOString(), syncState: 'clean' })
   } catch (problem) {
+    if (problem instanceof ApiError) validationErrors.value = problem.errors
     saveState.value = problem instanceof ApiError && problem.status === 409 ? 'conflict' : 'offline'
   }
 }
@@ -81,6 +87,7 @@ function updateAddress(value: FormFields) {
 
 async function upload() {
   if (!application.value || !uploadFile.value) return
+  validationErrors.value = {}; error.value = ''
   const file = uploadFile.value; const chunkSize = 1024 * 1024
   try {
     const idempotencyKey = await sha256(new TextEncoder().encode(`${application.value.id}:${uploadType.value}:${file.name}:${file.size}:${file.lastModified}`))
@@ -96,7 +103,7 @@ async function upload() {
     }
     const response = await api<{ document: Record<string, unknown> }>(`/upload-sessions/${initiated.session.id}/complete`, { method: 'POST', ...jsonBody({ sha256: await sha256(new Uint8Array(await file.arrayBuffer())), client_mime_type: file.type }) })
     application.value.documents.push(response.document); uploadFile.value = null; error.value = ''
-  } catch (problem) { error.value = `${problem instanceof Error ? problem.message : 'Upload failed.'} Choose Upload again to resume acknowledged chunks.` }
+  } catch (problem) { if (problem instanceof ApiError) validationErrors.value = problem.errors; error.value = `${problem instanceof Error ? problem.message : 'Upload failed.'} Choose Upload again to resume acknowledged chunks.` }
   finally { if (!uploadFile.value) uploadProgress.value = 0 }
 }
 
@@ -108,7 +115,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 
 async function submit() {
   if (!application.value) return
-  submitting.value = true; error.value = ''
+  submitting.value = true; error.value = ''; validationErrors.value = {}
   await saveDraft()
   if (saveState.value !== 'saved') { error.value = 'Resolve the draft sync state before final submission.'; submitting.value = false; return }
   try {
@@ -117,25 +124,26 @@ async function submit() {
     await router.push(`/applications/${response.data.id}/status`)
   } catch (problem) {
     const apiError = problem as ApiError
-    error.value = apiError.errors ? Object.values(apiError.errors).flat().join(' ') : apiError.message
+    error.value = apiError.message
+    validationErrors.value = apiError.errors || {}
   } finally { submitting.value = false }
 }
 </script>
 
 <template>
   <section v-if="application" class="workspace-heading"><div><p class="eyebrow">{{ application.campaign.name }}</p><h1>{{ application.post.name }}</h1><StatusBadge :status="application.status" /></div><div class="progress-card"><span>{{ completion }}% complete</span><div class="progress-track"><i :style="{ width: `${completion}%` }" /></div><small :class="`save-${saveState}`">{{ saveState === 'saved' ? 'Saved securely' : saveState === 'saving' ? 'Saving…' : saveState === 'conflict' ? 'Conflict — refresh required' : 'Saved on this device' }}</small></div></section>
-  <div v-if="error" class="alert error page-alert" role="alert">{{ error }}</div>
+  <FormAlert v-if="error" kind="error" page><strong>{{ error }}</strong><ul v-if="Object.keys(validationErrors).length" class="validation-summary"><li v-for="(messages, field) in validationErrors" :key="field"><span>{{ field.replaceAll('_', ' ').replaceAll('.', ' ') }}:</span> {{ messages.join(' ') }}</li></ul></FormAlert>
   <section v-if="application" class="wizard-layout">
     <nav class="wizard-nav" aria-label="Application sections"><button v-for="(section, index) in sections" :key="section" :class="{ active: activeSection === section }" @click="activeSection = section"><span>{{ index + 1 }}</span>{{ section.replaceAll('_', ' ') }}</button><button :class="{ active: activeSection === 'documents' }" @click="activeSection = 'documents'"><span>{{ sections.length + 1 }}</span>Documents</button><button :class="{ active: activeSection === 'review' }" @click="activeSection = 'review'"><span>{{ sections.length + 2 }}</span>Review</button></nav>
     <div class="wizard-panel">
-      <form v-if="activeSection === 'personal'" @submit.prevent><p class="eyebrow">Personal details</p><h2>Details matching your identification</h2><div class="field-grid"><label>Full legal name<input v-model="draft.personal.full_name" required /></label><label>National ID number<input v-model="draft.personal.nin" required /></label><label>Date of birth<input v-model="draft.personal.date_of_birth" type="date" required /></label><label>Nationality<input v-model="draft.personal.nationality" required /></label><label>Phone number<input v-model="draft.personal.phone" type="tel" /></label><label>Email address<input v-model="draft.personal.email" type="email" /></label></div></form>
+      <form v-if="activeSection === 'personal'" @submit.prevent><p class="eyebrow">Personal details</p><h2>Details matching your identification</h2><div class="field-grid"><label>Full legal name<input v-model="draft.personal.full_name" required /><FieldError :error="validationErrors['draft_data.personal.full_name']" /></label><label>National ID number<input v-model="draft.personal.nin" required /><FieldError :error="validationErrors['draft_data.personal.nin']" /></label><label>Date of birth<input v-model="draft.personal.date_of_birth" type="date" required /><FieldError :error="validationErrors['draft_data.personal.date_of_birth']" /></label><label>Nationality<input v-model="draft.personal.nationality" required /><FieldError :error="validationErrors['draft_data.personal.nationality']" /></label><label>Phone number<input v-model="draft.personal.phone" type="tel" /><FieldError :error="validationErrors['draft_data.personal.phone']" /></label><label>Email address<input v-model="draft.personal.email" type="email" /><FieldError :error="validationErrors['draft_data.personal.email']" /></label></div></form>
       <form v-else-if="activeSection === 'address' || activeSection === 'origin' || activeSection === 'residence'" @submit.prevent><p class="eyebrow">Geography</p><h2>{{ activeSection }} details</h2><AdministrativeAddressSelector :key="activeSection" :model-value="activeFields" @update:model-value="updateAddress" /><label class="wide">Street, landmark, or other physical directions <span>(optional)</span><textarea v-model="activeFields.physical_address" rows="3" /></label></form>
       <EducationRecordsForm v-else-if="activeSection === 'education'" v-model="draft.education" />
       <form v-else-if="activeSection === 'declaration' || activeSection === 'declarations'" @submit.prevent><p class="eyebrow">Declaration</p><h2>Confirm the information is yours</h2><label class="checkbox"><input v-model="draft.declaration.accepted" type="checkbox" /> <span>I declare that the information and documents I provide are complete and accurate. I understand that false information may disqualify my application.</span></label></form>
-      <form v-else-if="activeSection === 'documents'" @submit.prevent="upload"><p class="eyebrow">Protected evidence</p><h2>Upload clear documents</h2><p class="form-intro">PDF, JPEG, or PNG. Files are uploaded in checksum-protected resumable chunks, signature-checked, malware-screened, versioned, and kept in protected storage.</p><div class="upload-row"><label>Document type<select v-model="uploadType"><option value="national_id">National identification</option><option value="academic_certificate">Academic certificate</option><option value="passport_photo">Passport photograph</option><option value="skill_certificate">Skill certificate</option></select></label><label>Choose file<input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /></label><button class="button primary" :disabled="!uploadFile">{{ uploadProgress ? `Uploading ${uploadProgress}%` : 'Upload' }}</button></div><progress v-if="uploadProgress" :value="uploadProgress" max="100">{{ uploadProgress }}%</progress><ul class="document-list"><li v-for="document in application.documents" :key="String(document.id)"><span><strong>{{ document.document_type }}</strong><small>{{ document.original_filename }}</small></span><StatusBadge :status="String(document.processing_status)" /></li></ul></form>
-      <div v-else-if="activeSection === 'review'"><p class="eyebrow">Final review</p><h2>Submit your application</h2><div class="review-summary"><div><span>Sections complete</span><strong>{{ completion }}%</strong></div><div><span>Documents uploaded</span><strong>{{ application.documents.length }}</strong></div><div><span>Hard copies</span><strong>{{ application.post.hard_copy_required ? 'Required after submission' : 'Not required' }}</strong></div></div><div class="notice"><strong>Submission locks this draft.</strong><p>You will receive a UPS reference and downloadable acknowledgement. A reference is assigned only after a successful final submission.</p></div><button class="button primary" :disabled="submitting || !draft.declaration?.accepted" @click="submit">{{ submitting ? 'Submitting securely…' : 'Submit final application' }}</button></div>
+      <form v-else-if="activeSection === 'documents'" @submit.prevent="upload"><p class="eyebrow">Protected evidence</p><h2>Upload clear documents</h2><p class="form-intro">PDF, JPEG, or PNG. Files are uploaded in checksum-protected resumable chunks, signature-checked, malware-screened, versioned, and kept in protected storage.</p><div class="upload-row"><label>Document type<select v-model="uploadType"><option value="national_id">National identification</option><option value="academic_certificate">Academic certificate</option><option value="passport_photo">Passport photograph</option><option value="skill_certificate">Skill certificate</option></select><FieldError :error="validationErrors.document_type" /></label><label>Choose file<input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /><FieldError :error="validationErrors.file" /></label><button class="button primary" :disabled="!uploadFile || uploadProgress > 0"><LoadingIndicator v-if="uploadProgress" small :label="`Uploading ${uploadProgress}%`" /><span v-else>Upload</span></button></div><progress v-if="uploadProgress" :value="uploadProgress" max="100">{{ uploadProgress }}%</progress><ul class="document-list"><li v-for="document in application.documents" :key="String(document.id)"><span><strong>{{ document.document_type }}</strong><small>{{ document.original_filename }}</small></span><StatusBadge :status="String(document.processing_status)" /></li></ul></form>
+      <div v-else-if="activeSection === 'review'"><p class="eyebrow">Final review</p><h2>Submit your application</h2><div class="review-summary"><div><span>Sections complete</span><strong>{{ completion }}%</strong></div><div><span>Documents uploaded</span><strong>{{ application.documents.length }}</strong></div><div><span>Hard copies</span><strong>{{ application.post.hard_copy_required ? 'Required after submission' : 'Not required' }}</strong></div></div><FieldError :error="validationErrors.application" /><FieldError :error="validationErrors.missing_sections" /><FieldError :error="validationErrors.missing_documents" /><div class="notice"><strong>Submission locks this draft.</strong><p>You will receive a UPS reference and downloadable acknowledgement. A reference is assigned only after a successful final submission.</p></div><button class="button primary" :disabled="submitting || !draft.declaration?.accepted" @click="submit"><LoadingIndicator v-if="submitting" small label="Submitting securely…" /><span v-else>Submit final application</span></button></div>
       <div v-else><p class="eyebrow">{{ activeSection }}</p><h2>{{ activeSection.replaceAll('_', ' ') }}</h2><label>Information<textarea v-model="activeFields.notes" rows="8" /></label></div>
     </div>
   </section>
-  <p v-else-if="!error" class="content-section">Loading application…</p>
+  <section v-else-if="loading" class="content-section"><SkeletonBlock :lines="7" label="Loading application workspace" /></section>
 </template>
