@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../stores/session'
 import OfflineBanner from './OfflineBanner.vue'
 
 const session = useSessionStore()
 const router = useRouter()
+const route = useRoute()
 const open = ref(false)
 const staffNav = computed(() => session.isStaff)
 const technicalAdmin = computed(() => session.user?.user_type === 'system_administrator')
 const recruitmentStaff = computed(() => staffNav.value && !technicalAdmin.value)
+const lastApplicationId = ref(sessionStorage.getItem('ups_last_application_id') || '')
+watch(() => route.params.id, (id) => {
+  if (typeof id === 'string' && route.path.startsWith('/applications/')) {
+    lastApplicationId.value = id
+    sessionStorage.setItem('ups_last_application_id', id)
+  }
+}, { immediate: true })
+const statusPath = computed(() => lastApplicationId.value ? `/applications/${lastApplicationId.value}/status` : '/dashboard')
 async function signOut() {
   await session.logout()
   await router.push('/')
@@ -43,8 +52,14 @@ async function signOut() {
       <RouterLink v-else class="nav-action" to="/access">Sign in / register</RouterLink>
     </nav>
   </header>
-  <main id="main-content" tabindex="-1"><slot /></main>
-  <footer class="site-footer">
+  <main id="main-content" :class="{ 'applicant-tab-content': session.isApplicant }" tabindex="-1"><slot /></main>
+  <nav v-if="session.isApplicant" class="applicant-bottom-nav" aria-label="Applicant navigation">
+    <RouterLink to="/"><span aria-hidden="true">⌂</span>Home</RouterLink>
+    <RouterLink to="/dashboard"><span aria-hidden="true">▤</span>Applications</RouterLink>
+    <RouterLink :to="statusPath"><span aria-hidden="true">✓</span>Status</RouterLink>
+    <RouterLink to="/help"><span aria-hidden="true">?</span>Help</RouterLink>
+  </nav>
+  <footer class="site-footer" :class="{ 'with-applicant-tabs': session.isApplicant }">
     <div><strong>Uganda Prisons Service</strong><br />Secure, accountable recruitment.</div>
     <div><RouterLink to="/help">Support and appeals</RouterLink><br /><span>Official portal · Africa/Kampala</span></div>
   </footer>
