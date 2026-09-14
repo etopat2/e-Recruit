@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Jobs\DeliverNotificationJob;
+use App\Mail\MfaEmailCodeMail;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
@@ -15,6 +17,20 @@ use Tests\TestCase;
 class NotificationDeliveryTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_email_mfa_delivery_uses_the_security_code_mailable(): void
+    {
+        Mail::fake();
+        $emailId = $this->notification('email', 'officer@example.test', 'auth.mfa.email_code');
+
+        (new DeliverNotificationJob($emailId, '123456'))->handle();
+
+        Mail::assertSent(MfaEmailCodeMail::class, function ($mail): bool {
+            return $mail->hasTo('officer@example.test')
+                && $mail->code === '123456';
+        });
+        $this->assertDatabaseHas('notifications', ['id' => $emailId, 'status' => 'delivered']);
+    }
 
     public function test_portal_and_sms_delivery_create_per_attempt_evidence(): void
     {
@@ -67,12 +83,12 @@ class NotificationDeliveryTest extends TestCase
         $this->assertDatabaseHas('notification_attempts', ['notification_id' => $pushId, 'status' => 'delivered', 'provider' => 'approved-push']);
     }
 
-    private function notification(string $channel, string $recipient): string
+    private function notification(string $channel, string $recipient, string $eventCode = 'test.synthetic'): string
     {
         $id = (string) Str::ulid();
         DB::table('notifications')->insert([
             'id' => $id,
-            'event_code' => 'test.synthetic',
+            'event_code' => $eventCode,
             'channel' => $channel,
             'recipient' => $recipient,
             'status' => 'pending',

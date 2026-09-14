@@ -226,7 +226,7 @@ These are the e-Recruit-specific API settings. Standard Laravel driver alternati
 |---|---|---|
 | `APP_NAME` | `UPS e-Recruit` | Application and notification name |
 | `APP_ENV` | `local` | Enables local behavior |
-| `APP_KEY` | Generated, never committed | Encrypts NINs, MFA secrets, recovery-code data, and application values |
+| `APP_KEY` | Generated, never committed | Encrypts NINs, MFA secrets, recovery-code data, queued email-code payloads, and application values |
 | `APP_DEBUG` | `true` locally only | Detailed local errors; must be false in production |
 | `APP_URL` | Same-origin application URL | Absolute link and artifact URL generation |
 | `APP_TIMEZONE` | `Africa/Kampala` | Application date/time interpretation |
@@ -295,14 +295,15 @@ Losing `APP_KEY` makes encrypted fields unreadable. Back it up in the approved s
 For each privileged development account:
 
 1. Open `/access` and sign in with its email and `ChangeMe!2026`.
-2. Select **Begin MFA enrolment** when prompted.
-3. Open the displayed `otpauth://` provisioning URI in an authenticator application.
-4. Save the one-time recovery codes outside the browser. They are shown only during enrolment.
-5. Enter the current six-digit code and activate MFA.
-6. When prompted, replace the development-only temporary password before entering the application.
-7. On later logins, supply the new password and current authenticator code together.
+2. Choose exactly one second-factor method: **Authenticator app (recommended)** or **Email code**. The selected method remains fixed until an authorised MFA reset and re-enrolment.
+3. Select **Begin MFA enrolment**.
+4. For an authenticator, scan the QR code or use the displayed `otpauth://` provisioning URI. For email MFA, retrieve the six-digit message from Mailpit at `http://localhost:8026` (or the configured `MAILPIT_UI_PORT`).
+5. Save the one-time recovery codes outside the browser. They are generated for either method, shown only during enrolment, and remain the account-recovery mechanism.
+6. Enter the current six-digit authenticator or email code and activate MFA. Email codes expire after five minutes, work once, allow five attempts, and have a 60-second resend cooldown.
+7. When prompted, replace the development-only temporary password before entering the application.
+8. On later logins, authenticator-enrolled users enter their current authenticator code with the password. Email-enrolled users submit the password first and then enter the purpose-bound code delivered to the registered email.
 
-Do not share authenticator secrets or recovery codes between testers. Reset MFA only through an authorised, audited support process.
+Do not share authenticator secrets, email codes, or recovery codes between testers. There is no SMS method, remembered-device bypass, or per-login method switch. Reset or change the enrolled method only through an authorised, audited MFA reset followed by re-enrolment.
 
 ## 6. Automated test sequence
 
@@ -452,6 +453,6 @@ Then follow `FINAL_IMPLEMENTATION_REPORT.md` and `docs/deployment/GO_LIVE_CHECKL
 - **`APP_KEY` error:** if `APP_KEY` is already populated in `apps/api/.env`, do not replace it; run `docker compose up -d --force-recreate api queue scheduler`. If it is empty on a new installation, run `docker compose exec -T api php artisan key:generate --force` once and then recreate those services. Confirm `/api/v1/health/ready` reports `checks.encryption.ok: true`.
 - **Worker returns 401/403:** `DOCUMENT_WORKER_TOKEN` differs between the API and worker.
 - **Uploads fail storage readiness:** confirm MinIO is healthy, `minio-init` succeeded, the bucket names match, and anonymous access is disabled.
-- **Privileged user receives an MFA error:** complete first-login enrolment and provide a current TOTP or unused recovery code.
+- **Privileged user receives an MFA error:** complete first-login enrolment using the selected authenticator or email method. For email MFA, verify the queue worker and SMTP/Mailpit connection, use the newest code within five minutes, and respect the 60-second resend cooldown. An unused recovery code remains valid for account recovery.
 - **Configuration change appears ignored:** run `docker compose exec -T api php artisan optimize:clear`; recreate containers when changing Compose-provided environment values.
 - **Queue-backed action remains pending:** inspect `docker compose logs queue` and verify database/Redis/provider connectivity.

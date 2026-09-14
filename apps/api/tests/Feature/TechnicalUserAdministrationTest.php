@@ -114,6 +114,7 @@ class TechnicalUserAdministrationTest extends TestCase
         ])->assertForbidden()->assertJsonPath('message', 'Complete MFA enrolment before changing this password.');
         $this->withToken($enrolmentToken)->postJson('/api/v1/auth/mfa/enrol', [
             'password' => self::TemporaryPassword,
+            'method' => 'authenticator',
         ])->assertOk()->assertJsonPath('provisioning_uri', 'otpauth://synthetic');
         $this->assertSame('text', Schema::getColumnType('users', 'mfa_recovery_codes'));
         $storedRecoveryCodes = DB::table('users')->where('id', $user->id)->value('mfa_recovery_codes');
@@ -150,6 +151,7 @@ class TechnicalUserAdministrationTest extends TestCase
         ])->assertOk()->assertJsonPath('requires_mfa_enrolment', true);
         $this->withToken($login->json('token'))->postJson('/api/v1/auth/mfa/enrol', [
             'password' => self::TemporaryPassword,
+            'method' => 'authenticator',
         ])->assertOk()->assertJsonStructure(['provisioning_uri', 'recovery_codes']);
         $firstSecret = $user->fresh()->mfa_secret;
 
@@ -160,6 +162,7 @@ class TechnicalUserAdministrationTest extends TestCase
         ])->assertOk()->assertJsonPath('requires_mfa_enrolment', true);
         $this->withToken($returningLogin->json('token'))->postJson('/api/v1/auth/mfa/restart', [
             'password' => self::TemporaryPassword,
+            'method' => 'authenticator',
         ])->assertOk()->assertJsonStructure(['provisioning_uri', 'recovery_codes']);
 
         $freshUser = $user->fresh();

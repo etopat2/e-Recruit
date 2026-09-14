@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Mail\MfaEmailCodeMail;
 use App\Models\PushSubscription;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -13,7 +15,7 @@ use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
-class DeliverNotificationJob implements ShouldBeUnique, ShouldQueue
+class DeliverNotificationJob implements ShouldBeEncrypted, ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -24,7 +26,7 @@ class DeliverNotificationJob implements ShouldBeUnique, ShouldQueue
     /** @var list<int> */
     public array $backoff = [30, 300, 1800];
 
-    public function __construct(public string $notificationId) {}
+    public function __construct(public string $notificationId, public ?string $oneTimeCode = null) {}
 
     public function uniqueId(): string
     {
@@ -118,9 +120,14 @@ class DeliverNotificationJob implements ShouldBeUnique, ShouldQueue
     /** @return array<string, mixed> */
     private function sendEmail(object $notification): array
     {
-        Mail::raw('A new UPS e-Recruit update is available in your secure applicant portal.', function ($message) use ($notification): void {
-            $message->to($notification->recipient)->subject('UPS e-Recruit update');
-        });
+        if ($notification->event_code === 'auth.mfa.email_code') {
+            throw_if($this->oneTimeCode === null, RuntimeException::class, 'The email MFA code is unavailable for delivery.');
+            Mail::to($notification->recipient)->send(new MfaEmailCodeMail($this->oneTimeCode));
+        } else {
+            Mail::raw('A new UPS e-Recruit update is available in your secure applicant portal.', function ($message) use ($notification): void {
+                $message->to($notification->recipient)->subject('UPS e-Recruit update');
+            });
+        }
 
         return ['provider' => config('mail.default'), 'accepted' => true];
     }

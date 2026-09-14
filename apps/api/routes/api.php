@@ -36,6 +36,8 @@ Route::prefix('v1')->name('api.')->group(function (): void {
         ->middleware('throttle:status-lookup')->name('artifacts.verify');
     Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:registration')->name('auth.register');
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('auth.login');
+    Route::post('auth/mfa/email/verify', [AuthController::class, 'verifyEmailOtp'])->middleware('throttle:otp')->name('auth.mfa.email.verify');
+    Route::post('auth/mfa/email/resend', [AuthController::class, 'resendEmailOtp'])->middleware('throttle:otp')->name('auth.mfa.email.resend');
 
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('auth/me', [AuthController::class, 'me'])->name('auth.me');

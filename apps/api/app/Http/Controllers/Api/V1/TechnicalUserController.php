@@ -249,11 +249,13 @@ class TechnicalUserController extends Controller
             $locked = User::query()->lockForUpdate()->findOrFail($user->id);
             $this->assertVersion($locked, (int) $data['entity_version']);
             $locked->forceFill([
+                'mfa_method' => null,
                 'mfa_secret' => null,
                 'mfa_recovery_codes' => null,
                 'mfa_confirmed_at' => null,
                 'entity_version' => $locked->entity_version + 1,
             ])->save();
+            DB::table('email_otp_challenges')->where('user_id', $locked->id)->delete();
             $this->deleteSessions($locked);
 
             return $locked->load(['roles:id,code,name', 'scopes']);
@@ -335,7 +337,8 @@ class TechnicalUserController extends Controller
             'status' => $user->status,
             'is_privileged' => (bool) $user->is_privileged,
             'must_change_password' => (bool) $user->must_change_password,
-            'mfa_enabled' => $user->mfa_secret !== null,
+            'mfa_enabled' => ($user->mfa_method !== null || $user->mfa_secret !== null) && $user->mfa_confirmed_at !== null,
+            'mfa_method' => $user->mfa_method ?: ($user->mfa_secret !== null ? 'authenticator' : null),
             'mfa_confirmed' => $user->mfa_confirmed_at !== null,
             'last_login_at' => $user->last_login_at,
             'password_changed_at' => $user->password_changed_at,

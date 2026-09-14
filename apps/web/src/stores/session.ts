@@ -2,6 +2,22 @@ import { defineStore } from 'pinia'
 import { api, jsonBody, setAuthToken } from '../lib/api'
 import type { User } from '../types'
 
+export interface EmailOtpChallengePayload {
+  challenge_id: string
+  challenge_token: string
+  masked_email: string
+  expires_in: number
+  resend_available_in: number
+}
+
+export interface LoginResponse extends Partial<EmailOtpChallengePayload> {
+  token?: string
+  user?: User
+  requires_mfa_enrolment?: boolean
+  requires_email_otp?: boolean
+  requires_password_change?: boolean
+}
+
 export const useSessionStore = defineStore('session', {
   state: () => ({ user: null as User | null, loading: false }),
   getters: {
@@ -26,13 +42,15 @@ export const useSessionStore = defineStore('session', {
       }
     },
     async login(identity: string, password: string, totpCode = '', recoveryCode = '') {
-      const response = await api<{ token: string; user: User; requires_mfa_enrolment?: boolean; requires_password_change?: boolean }>('/auth/login', {
+      const response = await api<LoginResponse>('/auth/login', {
         method: 'POST',
         ...jsonBody({ identity, password, device_name: navigator.userAgent.slice(0, 90), totp_code: totpCode || undefined, recovery_code: recoveryCode || undefined }),
       })
-      setAuthToken(response.token)
-      this.user = response.user
-      cacheUser(response.user)
+      if (response.token && response.user) {
+        setAuthToken(response.token)
+        this.user = response.user
+        cacheUser(response.user)
+      }
       return response
     },
     async logout() {

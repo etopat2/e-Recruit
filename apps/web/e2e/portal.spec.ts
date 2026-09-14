@@ -93,7 +93,7 @@ test('privileged access supports QR enrolment and recovery-code login', async ({
       await route.fulfill({ json: { token: 'enrol-token', user: pendingUser, requires_mfa_enrolment: true } })
     }
   })
-  await page.route('**/api/v1/auth/mfa/enrol', async (route) => route.fulfill({ json: { provisioning_uri: 'otpauth://totp/UPS%20e-Recruit:admin%40example.test?secret=SYNTHETICSECRET&issuer=UPS%20e-Recruit&algorithm=SHA1&digits=6&period=30', recovery_codes: ['ABCDE-12345', 'FGHIJ-67890'] } }))
+  await page.route('**/api/v1/auth/mfa/enrol', async (route) => route.fulfill({ json: { method: 'authenticator', provisioning_uri: 'otpauth://totp/UPS%20e-Recruit:admin%40example.test?secret=SYNTHETICSECRET&issuer=UPS%20e-Recruit&algorithm=SHA1&digits=6&period=30', recovery_codes: ['ABCDE-12345', 'FGHIJ-67890'] } }))
   await page.route('**/api/v1/applications', async (route) => route.fulfill({ json: { data: [] } }))
   await page.route('**/api/v1/reports/dashboard', async (route) => route.fulfill({ status: 403, json: { message: 'Not available for this role.' } }))
 
@@ -115,6 +115,39 @@ test('privileged access supports QR enrolment and recovery-code login', async ({
   await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
   expect(recoveryPayload).toMatchObject({ recovery_code: 'ABCDE-12345' })
+})
+
+test('privileged access supports email-code MFA enrolment and confirmation', async ({ page }) => {
+  const pendingUser = { id: 18, name: 'Synthetic Email Administrator', email: 'email-admin@example.test', phone: null, user_type: 'panel_member', status: 'active', is_privileged: true, mfa_method: null, mfa_confirmed: false, must_change_password: false, scopes: [] }
+  let enrolmentPayload: Record<string, unknown> | null = null
+  let confirmationPayload: Record<string, unknown> | null = null
+  await page.route('**/api/v1/auth/login', async (route) => route.fulfill({ json: { token: 'email-enrol-token', user: pendingUser, requires_mfa_enrolment: true } }))
+  await page.route('**/api/v1/auth/mfa/enrol', async (route) => {
+    enrolmentPayload = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ json: { method: 'email', challenge_id: '01JEMAILENROLMENT000000000', challenge_token: 'e'.repeat(64), masked_email: 'em•••••••••@example.test', expires_in: 300, resend_available_in: 60, recovery_codes: ['EMAIL-12345'] } })
+  })
+  await page.route('**/api/v1/auth/mfa/confirm', async (route) => {
+    confirmationPayload = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ json: { token: 'email-active-token', user: { ...pendingUser, mfa_method: 'email', mfa_confirmed: true } } })
+  })
+  await page.route('**/api/v1/applications', async (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/reports/dashboard', async (route) => route.fulfill({ status: 403, json: { message: 'Not available for this role.' } }))
+
+  await page.goto('/access')
+  await page.getByLabel('Email address or phone').fill('email-admin@example.test')
+  await page.getByLabel('Password', { exact: true }).fill('SyntheticPassword2026')
+  await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('radio', { name: /Email code/i }).check()
+  await page.getByRole('button', { name: 'Begin MFA enrolment' }).click()
+  await expect(page.getByRole('heading', { name: 'Confirm the email code' })).toBeVisible()
+  await expect(page.getByText('EMAIL-12345')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Resend in 60s/ })).toBeDisabled()
+  await page.getByLabel('Email security code').fill('246810')
+  await page.getByRole('button', { name: 'Activate MFA' }).click()
+
+  await expect(page).toHaveURL(/\/dashboard$/)
+  expect(enrolmentPayload).toMatchObject({ method: 'email' })
+  expect(confirmationPayload).toMatchObject({ challenge_id: '01JEMAILENROLMENT000000000', code: '246810' })
 })
 
 test('temporary credentials must be replaced before application access', async ({ page }) => {
@@ -230,6 +263,16 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
   await page.route('**/api/v1/applications/app-1/submit', async (route) => { submitted = true; version += 1; await route.fulfill({ json: { data: application() } }) })
   await page.route('**/api/v1/notifications', async (route) => route.fulfill({ json: { notifications: { data: [] } } }))
   await page.route('**/api/v1/notifications/push/config', async (route) => route.fulfill({ json: { enabled: false, public_key: '' } }))
+  await page.route('**/api/v1/education-qualification-levels', async (route) => route.fulfill({ json: { data: [{
+    label: 'School education',
+    options: [{
+      value: 'UCE',
+      label: 'Uganda Certificate of Education (UCE / O-Level) — National Level 2',
+      guidance: 'Choose the overall UCE result printed on the result slip or certificate.',
+      directory_searchable: true,
+      results: [{ value: 'Result 1 (Certificate awarded)', label: 'Result 1 — certificate awarded (current curriculum)' }],
+    }],
+  }] } }))
   await page.route('**/api/v1/education-institutions*', async (route) => route.fulfill({ json: { data: [{ id: 'institution-1', name: 'Synthetic Secondary School', institution_type: 'Secondary School', district: 'Kampala', registration_number: 'EMIS-1', registration_status: 'Registered', operational_status: 'Active', source: 'moes_emis', source_url: 'https://emis.go.ug/emis/public-search', last_verified_at: '2026-09-09T00:00:00Z' }] } }))
 
   await page.goto('/')

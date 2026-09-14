@@ -14,7 +14,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'email_verified_at', 'phone', 'nin_hash', 'password', 'user_type', 'status', 'is_privileged', 'locale', 'must_change_password', 'password_changed_at'])]
+#[Fillable(['name', 'email', 'email_verified_at', 'phone', 'nin_hash', 'password', 'user_type', 'status', 'is_privileged', 'mfa_method', 'locale', 'must_change_password', 'password_changed_at'])]
 #[Hidden(['password', 'remember_token', 'nin_hash', 'mfa_secret', 'mfa_recovery_codes'])]
 class User extends Authenticatable
 {
@@ -29,6 +29,11 @@ class User extends Authenticatable
     public function scopes(): HasMany
     {
         return $this->hasMany(UserScope::class);
+    }
+
+    public function emailOtpChallenges(): HasMany
+    {
+        return $this->hasMany(EmailOtpChallenge::class);
     }
 
     public function roles(): BelongsToMany
