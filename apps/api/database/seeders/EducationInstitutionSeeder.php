@@ -12,6 +12,8 @@ class EducationInstitutionSeeder extends Seeder
      */
     public function run(): void
     {
-        app(OfficialEducationInstitutionDirectory::class)->syncCurrentDirectories();
+        $directory = app(OfficialEducationInstitutionDirectory::class);
+        $directory->syncCurrentDirectories();
+        $directory->syncSchools();
     }
 }

@@ -30,3 +30,5 @@ Investigate dependency/root cause before retry. Document and notification jobs a
 ## Maintenance
 
 Use maintenance mode for consistency-impacting work, stop workers gracefully, back up, record release/change references, perform the smallest approved action, validate health and workflows, then reopen traffic. Never run `migrate:fresh`, `db:wipe`, volume removal or synthetic-data generation in production.
+
+The scheduler refreshes the local NCHE, MoES TVET and MoES EMIS institution directory weekly. To run or recover it manually, use `php artisan erecruit:sync-education-institutions`; use `--source=emis`, `--source=nche` or `--source=tvet` to limit the refresh. EMIS progress is reported per bounded national page and the upstream session is renewed periodically. Do not clear the existing table after an upstream failure: incomplete synchronizations preserve the last verified directory, and applicant search never calls the external service.

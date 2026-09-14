@@ -37,6 +37,8 @@ return [
         'maximum_results' => 7,
         'search_cache_hours' => (int) env('INSTITUTION_SEARCH_CACHE_HOURS', 24),
         'request_timeout_seconds' => (int) env('INSTITUTION_DIRECTORY_TIMEOUT_SECONDS', 30),
+        'emis_sync_page_size' => (int) env('EMIS_INSTITUTION_SYNC_PAGE_SIZE', 1000),
+        'emis_sync_timeout_seconds' => (int) env('EMIS_INSTITUTION_SYNC_TIMEOUT_SECONDS', 90),
         'emis_search_url' => env('EMIS_INSTITUTION_SEARCH_URL', 'https://emis.go.ug/emis/public-search'),
         'nche_institutions_url' => env('NCHE_INSTITUTIONS_URL', 'https://unche.or.ug/institutions/'),
         'tvet_institutions_url' => env('TVET_INSTITUTIONS_URL', 'https://tvet.go.ug/institutions'),

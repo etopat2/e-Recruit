@@ -54,6 +54,18 @@ class EducationInstitutionDirectoryTest extends TestCase
             ->assertJsonValidationErrors(['search', 'limit']);
     }
 
+    public function test_school_search_never_waits_for_the_remote_emis_service(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+        Http::fake();
+
+        $this->getJson('/api/v1/education-institutions?level=UCE&search=Uncached')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        Http::assertNothingSent();
+    }
+
     public function test_current_nche_and_tvet_directories_are_synchronized_with_provenance(): void
     {
         Http::fake([
@@ -137,7 +149,10 @@ class EducationInstitutionDirectoryTest extends TestCase
                 return Http::response("<div wire:snapshot=\"{$snapshot}\" data-csrf=\"csrf-token\"></div>");
             }
 
-            return Http::response(['components' => [['effects' => ['html' => $schoolCards]]]]);
+            return Http::response(['components' => [[
+                'snapshot' => json_encode(['data' => ['schoolTotalResults' => 7]], JSON_THROW_ON_ERROR),
+                'effects' => ['html' => $schoolCards],
+            ]]]);
         });
 
         $directory = app(OfficialEducationInstitutionDirectory::class);
@@ -149,5 +164,110 @@ class EducationInstitutionDirectoryTest extends TestCase
         $this->assertSame(['UCE', 'UACE'], $institution->qualification_levels);
         $this->assertSame('moes_emis', $institution->source);
         Http::assertSentCount(2);
+    }
+
+    public function test_complete_emis_school_directory_is_synchronized_in_bounded_pages(): void
+    {
+        config(['erecruit.institution_directory.emis_sync_page_size' => 24]);
+        $initialSnapshot = htmlspecialchars(json_encode(['data' => []], JSON_THROW_ON_ERROR), ENT_QUOTES | ENT_HTML5);
+        $cards = fn (int $start, int $end, string $type): string => collect(range($start, $end))->map(fn (int $index): string => <<<HTML
+            <div class="card school-card" wire:click="showSchoolDetails({$index})">
+                <span class="title text-dark">Official {$type} School {$index}</span>
+                <div class="detail-item"><span class="text-soft">KAMPALA</span></div>
+                <div class="detail-item"><span class="text-soft">{$type} SCHOOL</span></div>
+                <span class="badge">ACTIVE</span>
+            </div>
+            HTML)->implode('');
+
+        Http::fakeSequence()
+            ->push("<div wire:snapshot=\"{$initialSnapshot}\" data-csrf=\"csrf-token\"></div>")
+            ->push(['components' => [[
+                'snapshot' => json_encode(['data' => ['schoolTotalResults' => 25, 'schoolCurrentPage' => 1]], JSON_THROW_ON_ERROR),
+                'effects' => ['html' => $cards(1, 24, 'PRIMARY')],
+            ]]])
+            ->push(['components' => [[
+                'snapshot' => json_encode(['data' => ['schoolTotalResults' => 25, 'schoolCurrentPage' => 2]], JSON_THROW_ON_ERROR),
+                'effects' => ['html' => $cards(25, 25, 'PRIMARY')],
+            ]]])
+            ->push("<div wire:snapshot=\"{$initialSnapshot}\" data-csrf=\"csrf-token\"></div>")
+            ->push(['components' => [[
+                'snapshot' => json_encode(['data' => ['schoolTotalResults' => 1, 'schoolCurrentPage' => 1]], JSON_THROW_ON_ERROR),
+                'effects' => ['html' => $cards(26, 26, 'SECONDARY')],
+            ]]]);
+
+        $progressUpdates = [];
+        $count = app(OfficialEducationInstitutionDirectory::class)->syncSchools(
+            function (...$arguments) use (&$progressUpdates): void {
+                $progressUpdates[] = $arguments;
+            },
+        );
+
+        $this->assertSame(26, $count);
+        $this->assertDatabaseCount('education_institutions', 26);
+        $this->assertSame(['PLE'], EducationInstitution::query()->where('source_id', '1')->firstOrFail()->qualification_levels);
+        $this->assertSame(['UCE', 'UACE'], EducationInstitution::query()->where('source_id', '26')->firstOrFail()->qualification_levels);
+        $this->assertCount(3, $progressUpdates);
+        Http::assertSentCount(5);
+    }
+
+    public function test_long_emis_sync_refreshes_its_session_before_high_page_offsets(): void
+    {
+        config(['erecruit.institution_directory.emis_sync_page_size' => 24]);
+        $initialSnapshot = htmlspecialchars(json_encode(['data' => []], JSON_THROW_ON_ERROR), ENT_QUOTES | ENT_HTML5);
+        $initialPage = "<div wire:snapshot=\"{$initialSnapshot}\" data-csrf=\"csrf-token\"></div>";
+        $cards = fn (int $start, int $end, string $type): string => collect(range($start, $end))->map(fn (int $index): string => <<<HTML
+            <div class="card school-card" wire:click="showSchoolDetails({$index})">
+                <span class="title text-dark">Official {$type} School {$index}</span>
+                <div class="detail-item"><span class="text-soft">KUMI</span></div>
+                <div class="detail-item"><span class="text-soft">{$type} SCHOOL</span></div>
+                <span class="badge">ACTIVE</span>
+            </div>
+            HTML)->implode('');
+
+        $getCount = 0;
+        $currentType = '2';
+        Http::fake(function (Request $request) use ($initialPage, $cards, &$getCount, &$currentType) {
+            if ($request->method() === 'GET') {
+                $getCount++;
+
+                return Http::response($initialPage);
+            }
+
+            $payload = $request->data();
+            $method = data_get($payload, 'components.0.calls.0.method');
+            if ($method === 'performSchoolSearch') {
+                $currentType = (string) data_get($payload, 'components.0.updates.school_type_id', $currentType);
+            }
+            $page = $method === 'schoolGoToPage'
+                ? (int) data_get($payload, 'components.0.calls.0.params.0', 1)
+                : 1;
+            $total = $currentType === '2' ? 241 : 1;
+            $start = $currentType === '2' ? (($page - 1) * 24) + 1 : 242;
+            $end = $currentType === '2' ? min($start + 23, $total) : 242;
+
+            return Http::response(['components' => [[
+                'snapshot' => json_encode(['data' => [
+                    'schoolTotalResults' => $total,
+                    'schoolCurrentPage' => $page,
+                ]], JSON_THROW_ON_ERROR),
+                'effects' => ['html' => $cards($start, $end, $currentType === '2' ? 'PRIMARY' : 'SECONDARY')],
+            ]]]);
+        });
+
+        $progressUpdates = [];
+        $count = app(OfficialEducationInstitutionDirectory::class)->syncSchools(
+            function (...$arguments) use (&$progressUpdates): void {
+                $progressUpdates[] = $arguments;
+            },
+        );
+
+        $this->assertSame(242, $count);
+        $this->assertDatabaseCount('education_institutions', 242);
+        $this->assertSame(['PLE'], EducationInstitution::query()->where('source_id', '241')->firstOrFail()->qualification_levels);
+        $this->assertSame(['UCE', 'UACE'], EducationInstitution::query()->where('source_id', '242')->firstOrFail()->qualification_levels);
+        $this->assertSame('primary / Uganda', $progressUpdates[0][0]);
+        $this->assertCount(12, $progressUpdates);
+        $this->assertSame(3, $getCount);
+        Http::assertSentCount(16);
     }
 }

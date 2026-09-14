@@ -8,8 +8,8 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Throwable;
 
-#[Signature('erecruit:sync-education-institutions {--source=all : all, nche, or tvet}')]
-#[Description('Synchronize current official NCHE and MoES TVET institution directories')]
+#[Signature('erecruit:sync-education-institutions {--source=all : all, nche, tvet, or emis}')]
+#[Description('Synchronize current official NCHE, MoES TVET, and MoES EMIS institution directories')]
 class SyncEducationInstitutions extends Command
 {
     /**
@@ -18,8 +18,8 @@ class SyncEducationInstitutions extends Command
     public function handle(OfficialEducationInstitutionDirectory $directory): int
     {
         $source = strtolower((string) $this->option('source'));
-        if (! in_array($source, ['all', 'nche', 'tvet'], true)) {
-            $this->error('The source must be all, nche, or tvet.');
+        if (! in_array($source, ['all', 'nche', 'tvet', 'emis'], true)) {
+            $this->error('The source must be all, nche, tvet, or emis.');
 
             return self::FAILURE;
         }
@@ -28,7 +28,11 @@ class SyncEducationInstitutions extends Command
             $counts = match ($source) {
                 'nche' => ['nche' => $directory->syncHigherEducation()],
                 'tvet' => ['tvet' => $directory->syncTvet()],
-                default => $directory->syncCurrentDirectories(),
+                'emis' => ['emis' => $directory->syncSchools($this->schoolProgress())],
+                default => [
+                    ...$directory->syncCurrentDirectories(),
+                    'emis' => $directory->syncSchools($this->schoolProgress()),
+                ],
             };
         } catch (Throwable $exception) {
             report($exception);
@@ -42,5 +46,13 @@ class SyncEducationInstitutions extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** @return callable(string, int, int, int, int): void */
+    private function schoolProgress(): callable
+    {
+        return function (string $partition, int $page, int $pages, int $imported, int $total): void {
+            $this->line("EMIS {$partition}: page {$page}/{$pages}; {$imported}/{$total} records synchronized.");
+        };
     }
 }

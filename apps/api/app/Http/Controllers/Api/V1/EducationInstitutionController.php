@@ -6,18 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SearchEducationInstitutionsRequest;
 use App\Http\Resources\EducationInstitutionResource;
 use App\Models\EducationInstitution;
-use App\Services\OfficialEducationInstitutionDirectory;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Str;
 
 class EducationInstitutionController extends Controller
 {
-    public function index(
-        SearchEducationInstitutionsRequest $request,
-        OfficialEducationInstitutionDirectory $directory,
-    ): AnonymousResourceCollection {
+    public function index(SearchEducationInstitutionsRequest $request): AnonymousResourceCollection
+    {
         $data = $request->validated();
-        $directory->refreshSchoolMatches($data['level'], $data['search']);
 
         $search = Str::upper(Str::ascii($data['search']));
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
@@ -27,6 +23,10 @@ class EducationInstitutionController extends Controller
         );
 
         $institutions = EducationInstitution::query()
+            ->select([
+                'id', 'name', 'institution_type', 'district', 'registration_number',
+                'registration_status', 'operational_status', 'source', 'source_url', 'last_verified_at',
+            ])
             ->where('active', true)
             ->whereJsonContains('qualification_levels', $data['level'])
             ->where('normalized_name', 'like', "%{$escaped}%")

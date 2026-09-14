@@ -79,7 +79,7 @@ function scheduleSearch(): void {
 
   const sequence = ++searchSequence
   loading.value = true
-  searchTimer = window.setTimeout(() => void searchInstitutions(sequence), 300)
+  searchTimer = window.setTimeout(() => void searchInstitutions(sequence), 150)
 }
 
 async function searchInstitutions(sequence: number): Promise<void> {

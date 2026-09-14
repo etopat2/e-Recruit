@@ -156,12 +156,14 @@ Run these commands from the repository root.
    ```powershell
    docker compose exec -T api php artisan migrate --seed --force
    docker compose exec -T api php artisan erecruit:import-uganda-administrative-units
+   docker compose exec -T api php artisan erecruit:sync-education-institutions
    ```
 
-   The second command must report 84,627 imported administrative units and 353 skipped electoral units. It is safe to rerun after a source-data refresh. Verify the database counts and latest source hash:
+   The administrative command must report 84,627 imported administrative units and 353 skipped electoral units. The institution command fetches all current NCHE, MoES TVET, primary and secondary institutions; EMIS uses bounded pages with periodic session renewal and may take several minutes on its first run. Both commands are safe to rerun after a source-data refresh. Verify the database counts and latest source hash:
 
    ```powershell
    docker compose exec -T api php artisan tinker --execute="dump(DB::table('administrative_units')->where('source', 'uganda_admin_complete_v1')->where('active', true)->count(), DB::table('administrative_unit_paths')->count(), DB::table('administrative_unit_imports')->latest()->first());"
+   docker compose exec -T api php artisan tinker --execute="dump(DB::table('education_institutions')->where('active', true)->count(), DB::table('education_institutions')->selectRaw('source, count(*) AS total')->groupBy('source')->pluck('total', 'source'));"
    ```
 
 8. Check readiness:
@@ -261,6 +263,13 @@ These are the e-Recruit-specific API settings. Standard Laravel driver alternati
 | `SMS_BASE_URL`, `SMS_TOKEN`, `PUSH_BASE_URL`, `PUSH_TOKEN` | Empty locally | Optional approved-provider settings |
 | `PUSH_VAPID_PUBLIC_KEY` | Empty locally | Optional web-push public key |
 | `SMS_TIMEOUT_SECONDS`, `PUSH_TIMEOUT_SECONDS` | `15` | Provider HTTP timeouts |
+| `INSTITUTION_SEARCH_CACHE_HOURS` | `24` | Cache lifetime for optional targeted directory maintenance lookups |
+| `INSTITUTION_DIRECTORY_TIMEOUT_SECONDS` | `30` | Timeout for the smaller NCHE/TVET directory requests |
+| `EMIS_INSTITUTION_SYNC_PAGE_SIZE` | `1000` | Maximum records requested per bounded EMIS synchronization page |
+| `EMIS_INSTITUTION_SYNC_TIMEOUT_SECONDS` | `90` | Per-attempt timeout for the slower scheduled EMIS bulk refresh |
+| `EMIS_INSTITUTION_SEARCH_URL` | Official MoES EMIS URL | Primary and secondary institution source |
+| `NCHE_INSTITUTIONS_URL` | Official NCHE URL | Higher-education institution source |
+| `TVET_INSTITUTIONS_URL`, `TVET_DIRECTORY_URL` | Official MoES TVET URLs | TVET page and machine-readable directory source |
 
 Losing `APP_KEY` makes encrypted fields unreadable. Back it up in the approved secret manager. Use `APP_PREVIOUS_KEYS` during a controlled key rotation; never commit current or previous keys.
 

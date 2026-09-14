@@ -19,11 +19,14 @@ docker compose --env-file .env.production -f docker-compose.production.yml build
 docker compose --env-file .env.production -f docker-compose.production.yml up -d postgres redis minio minio-init document-worker
 docker compose --env-file .env.production -f docker-compose.production.yml run --rm api php artisan migrate --force
 docker compose --env-file .env.production -f docker-compose.production.yml run --rm api php artisan db:seed --force
+docker compose --env-file .env.production -f docker-compose.production.yml run --rm api php artisan erecruit:sync-education-institutions
 docker compose --env-file .env.production -f docker-compose.production.yml up -d
 BASE_URL=https://staging.example.invalid infra/scripts/health-check.sh
 ```
 
 Do not run `db:seed` against production unless the reviewed production seeder is part of the change. Demo users remain disabled unless `SEED_DEMO_USERS=true`; that option is forbidden in production.
+
+The institution sync must complete before applicant traffic is enabled. It validates its primary and secondary totals against the national MoES EMIS counts before deactivating stale rows. The scheduler repeats the official-directory refresh weekly; a failed refresh preserves the last usable local directory.
 
 ## Release upgrade
 

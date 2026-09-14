@@ -27,6 +27,22 @@ class OfficialEducationInstitutionDirectory
         ];
     }
 
+    /**
+     * Synchronize the complete primary and secondary school directories in
+     * bounded pages so applicant searches never wait on the remote EMIS site.
+     *
+     * @param  (callable(string, int, int, int, int): void)|null  $progress
+     */
+    public function syncSchools(?callable $progress = null): int
+    {
+        $imported = 0;
+        foreach (['2', '3'] as $schoolTypeId) {
+            $imported += $this->syncSchoolType($schoolTypeId, $progress);
+        }
+
+        return $imported;
+    }
+
     public function syncHigherEducation(): int
     {
         $url = (string) config('erecruit.institution_directory.nche_institutions_url');
@@ -183,6 +199,144 @@ class OfficialEducationInstitutionDirectory
 
     private function fetchEmisSchoolMatches(string $schoolTypeId, string $search): int
     {
+        $session = $this->initializeEmisSession();
+        $page = $this->requestEmisPage(
+            $session,
+            $session['snapshot'],
+            [
+                'schoolSearch' => trim($search),
+                'school_type_id' => $schoolTypeId,
+                'schoolPerPage' => (int) config('erecruit.institution_directory.maximum_results'),
+            ],
+            'performSchoolSearch',
+        );
+
+        return $this->upsertSchoolPage($page['html'], $schoolTypeId, now());
+    }
+
+    /**
+     * @param  (callable(string, int, int, int, int): void)|null  $progress
+     */
+    private function syncSchoolType(string $schoolTypeId, ?callable $progress): int
+    {
+        $pageSize = max(24, min((int) config('erecruit.institution_directory.emis_sync_page_size'), 1000));
+        $session = $this->initializeEmisSession();
+        $syncStartedAt = now();
+        $nationalResult = $this->requestEmisPage(
+            $session,
+            $session['snapshot'],
+            [
+                'schoolSearch' => '',
+                'school_type_id' => $schoolTypeId,
+                'schoolPerPage' => $pageSize,
+            ],
+            'performSchoolSearch',
+        );
+        $nationalTotal = $this->snapshotInteger($nationalResult['snapshot'], 'schoolTotalResults');
+        if ($nationalTotal < 1) {
+            throw new RuntimeException("The EMIS school type {$schoolTypeId} directory returned no records.");
+        }
+
+        $this->synchronizeSchoolPartition(
+            $session,
+            $nationalResult,
+            $schoolTypeId,
+            $pageSize,
+            $syncStartedAt,
+            $this->schoolTypeLabel($schoolTypeId).' / Uganda',
+            $progress,
+            [
+                'schoolSearch' => '',
+                'school_type_id' => $schoolTypeId,
+                'schoolPerPage' => $pageSize,
+            ],
+        );
+
+        $qualificationLevel = $schoolTypeId === '2' ? 'PLE' : 'UCE';
+        $verified = EducationInstitution::query()
+            ->where('source', 'moes_emis')
+            ->whereJsonContains('qualification_levels', $qualificationLevel)
+            ->where('last_verified_at', '>=', $syncStartedAt)
+            ->count();
+        if ($verified < $nationalTotal) {
+            throw new RuntimeException(
+                "EMIS reported {$nationalTotal} {$this->schoolTypeLabel($schoolTypeId)} schools, "
+                ."but only {$verified} were verified. Existing records were preserved.",
+            );
+        }
+
+        EducationInstitution::query()
+            ->where('source', 'moes_emis')
+            ->whereJsonContains('qualification_levels', $qualificationLevel)
+            ->where('last_verified_at', '<', $syncStartedAt)
+            ->update(['active' => false, 'updated_at' => now()]);
+
+        return $verified;
+    }
+
+    /**
+     * @param  array{client: PendingRequest, url: string, update_url: string, csrf: string, snapshot: string}  $session
+     * @param  array{html: string, snapshot: string}  $firstPage
+     * @param  (callable(string, int, int, int, int): void)|null  $progress
+     * @param  array<string, int|string>|null  $restartUpdates
+     */
+    private function synchronizeSchoolPartition(
+        array $session,
+        array $firstPage,
+        string $schoolTypeId,
+        int $pageSize,
+        mixed $syncStartedAt,
+        string $label,
+        ?callable $progress,
+        ?array $restartUpdates = null,
+    ): int {
+        $totalResults = $this->snapshotInteger($firstPage['snapshot'], 'schoolTotalResults');
+        if ($totalResults < 1) {
+            return 0;
+        }
+
+        $totalPages = (int) ceil($totalResults / $pageSize);
+        $imported = $this->upsertSchoolPage($firstPage['html'], $schoolTypeId, $syncStartedAt);
+        if ($progress !== null) {
+            $progress($label, 1, $totalPages, $imported, $totalResults);
+        }
+        $snapshot = $firstPage['snapshot'];
+
+        for ($pageNumber = 2; $pageNumber <= $totalPages; $pageNumber++) {
+            if ($restartUpdates !== null && ($pageNumber - 1) % 10 === 0) {
+                // Long-lived Livewire sessions become unreliable at high page
+                // offsets. Start clean periodically, then jump to the required
+                // page from a fresh national-search snapshot.
+                $session = $this->initializeEmisSession();
+                $restart = $this->requestEmisPage(
+                    $session,
+                    $session['snapshot'],
+                    $restartUpdates,
+                    'performSchoolSearch',
+                );
+                $snapshot = $restart['snapshot'];
+            }
+
+            $result = $this->requestEmisPage(
+                $session,
+                $snapshot,
+                ['schoolPerPage' => $pageSize],
+                'schoolGoToPage',
+                [$pageNumber],
+            );
+            $snapshot = $result['snapshot'];
+            $imported += $this->upsertSchoolPage($result['html'], $schoolTypeId, $syncStartedAt);
+            if ($progress !== null) {
+                $progress($label, $pageNumber, $totalPages, $imported, $totalResults);
+            }
+        }
+
+        return $imported;
+    }
+
+    /** @return array{client: PendingRequest, url: string, update_url: string, csrf: string, snapshot: string} */
+    private function initializeEmisSession(): array
+    {
         $url = (string) config('erecruit.institution_directory.emis_search_url');
         $updateUrl = (string) parse_url($url, PHP_URL_SCHEME).'://'.(string) parse_url($url, PHP_URL_HOST).'/livewire/update';
         $cookies = new CookieJar;
@@ -195,36 +349,62 @@ class OfficialEducationInstitutionDirectory
         }
 
         $snapshot = html_entity_decode($snapshotMatch[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $csrf = $csrfMatch[1];
-        $response = $client
+
+        return [
+            'client' => $client,
+            'url' => $url,
+            'update_url' => $updateUrl,
+            'csrf' => $csrfMatch[1],
+            'snapshot' => $snapshot,
+        ];
+    }
+
+    /**
+     * @param  array{client: PendingRequest, url: string, update_url: string, csrf: string, snapshot: string}  $session
+     * @param  array<string, int|string>  $updates
+     * @param  list<mixed>  $params
+     * @return array{html: string, snapshot: string}
+     */
+    private function requestEmisPage(
+        array $session,
+        string $snapshot,
+        array $updates,
+        string $method,
+        array $params = [],
+    ): array {
+        $response = $session['client']
+            ->timeout((int) config('erecruit.institution_directory.emis_sync_timeout_seconds'))
+            ->retry(3, 1000)
             ->withHeaders([
                 'Accept' => 'application/json',
-                'Referer' => $url,
-                'X-CSRF-TOKEN' => $csrf,
+                'Referer' => $session['url'],
+                'X-CSRF-TOKEN' => $session['csrf'],
                 'X-Livewire' => 'true',
             ])
-            ->post($updateUrl, [
-                '_token' => $csrf,
+            ->post($session['update_url'], [
+                '_token' => $session['csrf'],
                 'components' => [[
                     'snapshot' => $snapshot,
-                    'updates' => [
-                        'schoolSearch' => trim($search),
-                        'school_type_id' => $schoolTypeId,
-                        'schoolPerPage' => (int) config('erecruit.institution_directory.maximum_results'),
-                    ],
+                    'updates' => $updates,
                     'calls' => [[
                         'path' => '',
-                        'method' => 'performSchoolSearch',
-                        'params' => [],
+                        'method' => $method,
+                        'params' => $params,
                     ]],
                 ]],
             ])
             ->throw();
         $html = $response->json('components.0.effects.html');
-        if (! is_string($html)) {
+        $nextSnapshot = $response->json('components.0.snapshot');
+        if (! is_string($html) || ! is_string($nextSnapshot)) {
             throw new RuntimeException('The EMIS public-search response could not be read.');
         }
 
+        return ['html' => $html, 'snapshot' => $nextSnapshot];
+    }
+
+    private function upsertSchoolPage(string $html, string $schoolTypeId, mixed $verifiedAt): int
+    {
         $xpath = $this->xpath($html);
         $cards = $xpath->query("//*[contains(concat(' ', normalize-space(@class), ' '), ' school-card ')]");
         if (! $cards) {
@@ -232,7 +412,7 @@ class OfficialEducationInstitutionDirectory
         }
 
         $qualificationLevels = $schoolTypeId === '2' ? ['PLE'] : ['UCE', 'UACE'];
-        $count = 0;
+        $records = [];
         foreach ($cards as $card) {
             if (! $card instanceof DOMElement
                 || ! preg_match('/showSchoolDetails\((\d+)\)/', $card->getAttribute('wire:click'), $idMatch)) {
@@ -246,24 +426,53 @@ class OfficialEducationInstitutionDirectory
                 continue;
             }
 
-            $this->upsert([
+            $records[] = [
+                'id' => (string) Str::ulid(),
                 'source' => 'moes_emis',
                 'source_id' => $idMatch[1],
                 'name' => $name,
+                'normalized_name' => $this->normalize($name),
                 'institution_type' => $this->text($details?->item(1)) ?: ($schoolTypeId === '2' ? 'PRIMARY SCHOOL' : 'SECONDARY SCHOOL'),
                 'district' => $this->text($details?->item(0)) ?: null,
                 'registration_number' => null,
                 'registration_status' => 'MoES EMIS record',
                 'operational_status' => $status ?: null,
-                'qualification_levels' => $qualificationLevels,
-                'source_url' => $url,
-                'source_payload' => ['school_type_id' => (int) $schoolTypeId],
+                'qualification_levels' => json_encode($qualificationLevels, JSON_THROW_ON_ERROR),
+                'source_url' => (string) config('erecruit.institution_directory.emis_search_url'),
+                'source_payload' => json_encode(['school_type_id' => (int) $schoolTypeId], JSON_THROW_ON_ERROR),
+                'last_verified_at' => $verifiedAt,
                 'active' => Str::upper($status) === 'ACTIVE',
-            ]);
-            $count++;
+                'created_at' => $verifiedAt,
+                'updated_at' => $verifiedAt,
+            ];
         }
 
-        return $count;
+        if ($records !== []) {
+            EducationInstitution::query()->upsert(
+                $records,
+                ['source', 'source_id'],
+                [
+                    'name', 'normalized_name', 'institution_type', 'district', 'registration_number',
+                    'registration_status', 'operational_status', 'qualification_levels', 'source_url',
+                    'source_payload', 'last_verified_at', 'active', 'updated_at',
+                ],
+            );
+        }
+
+        return count($records);
+    }
+
+    private function snapshotInteger(string $snapshot, string $key): int
+    {
+        $decoded = json_decode($snapshot, true);
+        $value = is_array($decoded) ? ($decoded['data'][$key] ?? null) : null;
+
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function schoolTypeLabel(string $schoolTypeId): string
+    {
+        return $schoolTypeId === '2' ? 'primary' : 'secondary';
     }
 
     /** @param array<string, mixed> $attributes */
