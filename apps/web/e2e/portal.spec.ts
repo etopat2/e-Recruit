@@ -74,8 +74,11 @@ test('applicant mobile navigation stays reachable behind a full-screen action di
   await expect(dialog).toBeVisible()
   await expect(dialog).toHaveCSS('border-radius', '0px')
   const box = await dialog.boundingBox()
-  expect(box?.width).toBeGreaterThanOrEqual(389)
-  expect(box?.height).toBeGreaterThan(800)
+  const viewport = page.viewportSize()
+  expect(box).not.toBeNull()
+  expect(viewport).not.toBeNull()
+  expect(box!.width / viewport!.width).toBeGreaterThan(0.98)
+  expect(box!.height / viewport!.height).toBeGreaterThan(0.95)
 })
 
 test('privileged access supports QR enrolment and recovery-code login', async ({ page }) => {
