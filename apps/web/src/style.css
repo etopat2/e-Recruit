@@ -237,6 +237,12 @@ label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
 .one-time-secret span { flex-basis: 100%; color: var(--muted); }
 .stacked-actions { display: grid; gap: .75rem; }
 .scope-editor { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
+.action-launcher-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+.action-launcher { min-height: 8rem; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: 1.25rem; border: 1px solid var(--line); border-left: 4px solid var(--gold); border-radius: .65rem; background: var(--paper); color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 .5rem 1.5rem rgb(50 34 20 / 5%); }
+.action-launcher:hover { border-color: var(--gold); transform: translateY(-1px); }
+.action-launcher.danger-zone { border-left-color: var(--danger); }
+.action-launcher strong { color: var(--burgundy); font-size: 1.05rem; }
+.action-launcher span { color: var(--muted); font-size: .88rem; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1.25rem; background: rgb(36 26 29 / 62%); backdrop-filter: blur(3px); }
 .dialog-panel { width: min(720px, 100%); max-height: min(90vh, 900px); display: flex; flex-direction: column; overflow: hidden; background: var(--paper); border: 1px solid rgb(255 255 255 / 45%); border-radius: .85rem; box-shadow: 0 2rem 5rem rgb(20 8 12 / 35%); }
