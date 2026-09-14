@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { api, jsonBody } from '../lib/api'
 import Dialog from '../components/Dialog.vue'
 import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
+import FormAlert from '../components/FormAlert.vue'
 
 const notice = ref('')
 const error = ref('')
@@ -137,8 +138,8 @@ function decideReplacement() {
     <h1>Centre, medical, and training workflows</h1>
     <p>Each action is authorised and scoped again by the server. Identifiers come from approved campaign registers and operational reports.</p>
   </section>
-  <div v-if="notice" class="alert success page-alert" role="status">{{ notice }}</div>
-  <div v-if="error" class="alert error page-alert" role="alert">{{ error }}</div>
+  <FormAlert v-if="notice" kind="success" :message="notice" page />
+  <FormAlert v-if="error" kind="error" :message="error" page />
 
   <section class="content-section compact-top"><div class="section-heading"><div><p class="eyebrow">Before interview</p><h2>Hard copies and scheduling</h2></div></div><div class="action-launcher-grid"><button type="button" class="action-launcher" @click="openAction('hard-copy')"><strong>Record hard-copy receipt</strong><span>Capture accountable document reception.</span></button><button type="button" class="action-launcher" @click="openAction('schedule')"><strong>Schedule candidates</strong><span>Generate deterministic centre and panel assignments.</span></button></div></section>
 

@@ -352,7 +352,7 @@ label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
   .mfa-setup-grid { grid-template-columns: 1fr; }
   .account-filters { grid-template-columns: 1fr; }
   .dialog-backdrop { align-items: end; padding: 0; }
-  .dialog-panel.mobile-sheet { width: 100%; max-height: calc(100dvh - env(safe-area-inset-top)); border-radius: 1rem 1rem 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .dialog-panel.mobile-sheet { width: 100%; height: calc(100dvh - env(safe-area-inset-top)); max-height: calc(100dvh - env(safe-area-inset-top)); border-radius: 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
   .dialog-panel.mobile-sheet .dialog-header { padding-top: 1rem; }
   .toast-viewport { top: max(1rem, env(safe-area-inset-top)); }
   .applicant-tab-content { padding-bottom: calc(5.1rem + env(safe-area-inset-bottom)); }

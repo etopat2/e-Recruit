@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import FormAlert from '../components/FormAlert.vue'
+import SkeletonBlock from '../components/SkeletonBlock.vue'
 import { api } from '../lib/api'
 import { useSessionStore } from '../stores/session'
 import type { Campaign } from '../types'
@@ -49,8 +51,8 @@ async function begin(campaignId: string, postId: string) {
 
   <section id="opportunities" class="content-section">
     <div class="section-heading"><div><p class="eyebrow">Current recruitment</p><h2>Open opportunities</h2></div><p>All closing times use East Africa Time.</p></div>
-    <p v-if="loading" role="status">Loading opportunities…</p>
-    <div v-else-if="error" class="alert error" role="alert">{{ error }}</div>
+    <SkeletonBlock v-if="loading" :lines="4" label="Loading opportunities" />
+    <FormAlert v-else-if="error" kind="error" :message="error" />
     <div v-else-if="campaigns.length === 0" class="empty-state"><h3>No opportunities are open</h3><p>Please return later. UPS will publish authorised campaigns here.</p></div>
     <div v-else class="campaign-grid">
       <article v-for="campaign in campaigns" :key="campaign.id" class="campaign-card">

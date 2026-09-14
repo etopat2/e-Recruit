@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import FormAlert from '../components/FormAlert.vue'
 import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
+import LoadingIndicator from '../components/LoadingIndicator.vue'
+import SkeletonBlock from '../components/SkeletonBlock.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { api, authToken, jsonBody } from '../lib/api'
 
@@ -19,6 +22,7 @@ const selectedSource = ref<EvidenceSource | null>(null)
 const error = ref('')
 const notice = ref('')
 const comparing = ref(false)
+const initialLoading = ref(true)
 const decision = reactive({ action: 'verify', outcome: 'VERIFIED/CONSISTENT', verified_value: '', reason: '' })
 const fieldKeys = computed(() => Object.keys(workbench.value?.evidence_matrix || {}))
 const fieldOptions = computed<ComboboxOption[]>(() => fieldKeys.value.map((key) => ({ value: key, label: key.replaceAll('_', ' ') })))
@@ -35,7 +39,7 @@ async function load() {
       const response = await fetch(`/api/v1/documents/${document.id}/download`, { headers: { Authorization: `Bearer ${authToken()}` } })
       if (response.ok) previews.value[document.id] = URL.createObjectURL(await response.blob())
     }))
-  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Workbench unavailable.' }
+  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Workbench unavailable.' } finally { initialLoading.value = false }
 }
 
 async function compare() {
@@ -85,15 +89,15 @@ function markerStyle(document: WorkbenchDocument): Record<string, string> | unde
 <template>
   <section class="workspace-heading">
     <div><p class="eyebrow">Verification workbench</p><h1>{{ workbench?.application.reference || 'Application evidence' }}</h1><p>Original documents, OCR output, entered data, and decisions remain visible together.</p></div>
-    <button class="button secondary" :disabled="comparing" @click="compare">{{ comparing ? 'Comparing…' : 'Run pairwise comparison' }}</button>
+    <button class="button secondary" :disabled="comparing" @click="compare"><LoadingIndicator v-if="comparing" small label="Comparing…" /><span v-else>Run pairwise comparison</span></button>
   </section>
-  <div v-if="error" class="alert error page-alert">{{ error }}</div><div v-if="notice" class="alert success page-alert">{{ notice }}</div>
+  <FormAlert v-if="error" kind="error" :message="error" page /><FormAlert v-if="notice" kind="success" :message="notice" page />
   <section v-if="workbench" class="verification-layout">
     <div class="document-rail">
       <article v-for="document in workbench.documents" :key="document.id" :class="['document-card', { selected: selectedDocument === document.id }]" @click="selectedDocument = document.id">
         <div class="card-topline"><span>{{ document.type }}</span><span>v{{ document.version }}</span></div>
         <div v-if="previews[document.id]" class="source-preview"><iframe :src="previewUrl(document)" :title="`${document.type} original`" /><i v-if="markerStyle(document)" class="source-highlight" :style="markerStyle(document)" aria-hidden="true" /></div>
-        <div v-else class="preview-loading">Loading protected preview…</div>
+        <div v-else class="preview-loading"><LoadingIndicator label="Loading protected preview…" /></div>
         <p v-if="selectedSource?.source_id === document.id" class="source-focus" role="status">Focused evidence source: page {{ selectedSource.page || 1 }}<span v-if="selectedSource.bounding_polygon">, highlighted at its recorded OCR coordinates</span>.</p>
         <div class="quality-row"><StatusBadge :status="String(document.quality?.status || 'review')" /><small>Original file · proxy access</small></div>
       </article>
@@ -104,5 +108,5 @@ function markerStyle(document: WorkbenchDocument): Record<string, string> | unde
       <div class="decision-panel"><h3>Record an accountable decision</h3><div class="field-grid"><label>Action<select v-model="decision.action"><option value="verify">Verify</option><option value="correct">Correct OCR/value</option><option value="flag_discrepancy">Flag discrepancy</option><option value="mark_ocr_incorrect">Mark OCR incorrect</option><option value="request_replacement">Request replacement</option><option value="mark_unreadable">Mark unreadable</option><option value="mark_not_present">Mark not present</option></select></label><label>Outcome<select v-model="decision.outcome"><option>VERIFIED/CONSISTENT</option><option>PROBABLE MATCH</option><option>DISCREPANCY</option><option>UNREADABLE/LOW CONFIDENCE</option><option>NOT AVAILABLE</option></select></label><label class="wide">Verified/corrected value<input v-model="decision.verified_value" /></label><label class="wide">Reason<textarea v-model="decision.reason" placeholder="Required for discrepancies and corrections" /></label></div><button class="button primary" @click="record">Record versioned decision</button></div>
     </div>
   </section>
-  <p v-else-if="!error" class="content-section">Loading protected evidence…</p>
+  <section v-else-if="initialLoading" class="content-section"><SkeletonBlock :lines="7" label="Loading protected evidence" /></section>
 </template>

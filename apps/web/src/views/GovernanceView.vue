@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { api, jsonBody } from '../lib/api'
 import Dialog from '../components/Dialog.vue'
+import FormAlert from '../components/FormAlert.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 
 interface Policy { id: string; record_category: string; retention_days: number; disposition: string; legal_basis_reference: string }
@@ -49,7 +50,7 @@ async function act(path: string, payload: unknown, success: string) {
 
 <template>
   <section class="page-heading"><p class="eyebrow">Privacy and records governance</p><h1>Retention, legal holds, and controlled purge</h1><p>Policy approval, purge request, independent decision, and execution are separate audited steps. Active applicant deletion is not available here.</p></section>
-  <div v-if="message" class="alert success page-alert">{{ message }}</div><div v-if="error" class="alert error page-alert">{{ error }}</div>
+  <FormAlert v-if="message" kind="success" :message="message" page /><FormAlert v-if="error" kind="error" :message="error" page />
   <section class="content-section compact-top"><div class="action-launcher-grid"><button type="button" class="action-launcher" @click="activeAction = 'policy'"><strong>Approve retention policy</strong><span>Set the reviewed legal basis, retention window, and approval reference.</span></button><button type="button" class="action-launcher" @click="activeAction = 'hold'"><strong>Place legal hold</strong><span>Exclude a specific entity from policy-controlled purge.</span></button><button type="button" class="action-launcher danger-zone" @click="activeAction = 'purge'"><strong>Request controlled purge</strong><span>Create a request for independent review; this does not delete records.</span></button></div></section>
   <section class="content-section"><div class="section-heading"><div><p class="eyebrow">Independent control</p><h2>Purge request register</h2></div></div><div class="table-wrap"><table><thead><tr><th>Category</th><th>Eligible</th><th>Status</th><th>Controlled action</th></tr></thead><tbody><tr v-for="record in governance?.purge_requests.data" :key="record.id"><td>{{ record.record_category }}</td><td>{{ record.eligible_record_count }}</td><td><StatusBadge :status="record.status" /></td><td><div class="button-row"><button v-if="record.status === 'pending_approval'" class="button secondary compact" @click="openDecision(record, 'approve')">Approve</button><button v-if="record.status === 'pending_approval'" class="text-button danger" @click="openDecision(record, 'reject')">Reject</button><button v-if="record.status === 'approved'" class="button compact" @click="openExecution(record)">Execute approved purge</button></div><code v-if="record.evidence_hash">{{ record.evidence_hash }}</code></td></tr></tbody></table></div></section>
 

@@ -2,6 +2,7 @@
 import { liveQuery } from 'dexie'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
+import FormAlert from '../components/FormAlert.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { api, jsonBody } from '../lib/api'
 import { configureOfflineUnlock, getOfflinePackage, lockOfflineData, offlineDb, offlineUnlockState, openOfflineValue, putOfflinePackage, sealOfflineValue, unlockOfflineData, type OfflineEvent } from '../offline/database'
@@ -231,8 +232,8 @@ async function purgePack(message: string) {
     <p class="eyebrow">Controlled field operation</p><h1>Offline workspace</h1>
     <p>Offline packs are user-, device-, role-, scope-, action-, and time-bound. A browser cache is never a general replica.</p>
   </section>
-  <div v-if="notice" class="alert success page-alert">{{ notice }}</div>
-  <div v-if="error" class="alert error page-alert">{{ error }}</div>
+  <FormAlert v-if="notice" kind="success" :message="notice" page />
+  <FormAlert v-if="error" kind="error" :message="error" page />
 
   <section v-if="!unlock.unlocked" class="configuration-layout compact-top">
     <form v-if="!unlock.configured" class="form-panel" @submit.prevent="configureUnlock">
