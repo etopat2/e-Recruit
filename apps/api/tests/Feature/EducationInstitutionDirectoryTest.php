@@ -17,6 +17,23 @@ class EducationInstitutionDirectoryTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_api_catalogue_is_the_authority_for_all_levels_and_directory_capabilities(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $response = $this->getJson('/api/v1/education-qualification-levels')
+            ->assertOk()
+            ->assertJsonCount(3, 'data')
+            ->assertJsonPath('data.0.label', 'School education');
+
+        $levels = collect($response->json('data'))->flatMap(fn (array $group): array => $group['options']);
+        $this->assertCount(32, $levels);
+        $this->assertCount(25, $levels->where('directory_searchable', true));
+        $this->assertTrue($levels->firstWhere('value', 'UCE')['directory_searchable']);
+        $this->assertFalse($levels->firstWhere('value', 'Advanced Craft Certificate (legacy TVET)')['directory_searchable']);
+        $this->assertArrayNotHasKey('directory_source', $levels->first());
+    }
+
     public function test_authenticated_search_filters_by_level_and_never_returns_more_than_seven_matches(): void
     {
         Sanctum::actingAs(User::factory()->create());
@@ -52,6 +69,9 @@ class EducationInstitutionDirectoryTest extends TestCase
         $this->getJson('/api/v1/education-institutions?level=UCE&search=M&limit=8')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['search', 'limit']);
+        $this->getJson('/api/v1/education-institutions?level='.urlencode('Advanced Craft Certificate (legacy TVET)').'&search=College')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('level');
     }
 
     public function test_school_search_never_waits_for_the_remote_emis_service(): void

@@ -27,6 +27,7 @@ function renderField(overrides: Partial<EducationRecordDraft> = {}) {
   render(InstitutionDirectoryField, {
     props: {
       modelValue: record,
+      directorySearchable: true,
       'onUpdate:modelValue': (value: EducationRecordDraft) => Object.assign(record, value),
     },
   })
@@ -92,5 +93,32 @@ describe('InstitutionDirectoryField', () => {
 
     expect(record.institution_not_listed).toBe(true)
     expect(screen.getByLabelText(/Institution name \(as shown on the certificate\)/i)).toHaveValue('Previously Saved College')
+  })
+
+  it('goes straight to manual entry and never searches for a non-searchable level', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const record = reactive<EducationRecordDraft>({
+      level: 'Advanced Craft Certificate (legacy TVET)',
+      institution: '',
+      institution_id: null,
+      institution_not_listed: false,
+      completion_year: '',
+      result: '',
+    })
+    render(InstitutionDirectoryField, {
+      props: {
+        modelValue: record,
+        directorySearchable: false,
+        'onUpdate:modelValue': (value: EducationRecordDraft) => Object.assign(record, value),
+      },
+    })
+    await flushPromises()
+
+    expect(screen.queryByRole('combobox', { name: 'Institution' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Institution name \(as shown on the certificate\)/i)).toBeVisible()
+    expect(screen.queryByRole('checkbox', { name: 'My institution is not listed' })).not.toBeInTheDocument()
+    expect(record.institution_not_listed).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

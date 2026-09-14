@@ -52,6 +52,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::delete('notifications/push/subscriptions/{pushSubscription}', [NotificationController::class, 'unsubscribe'])->name('notifications.push.unsubscribe');
 
             Route::get('geography/units', [GeographyController::class, 'selectableUnits'])->middleware('throttle:120,1')->name('geography.units.index');
+            Route::get('education-qualification-levels', [EducationInstitutionController::class, 'catalogue'])->name('education-qualification-levels.index');
             Route::get('education-institutions', [EducationInstitutionController::class, 'index'])->middleware('throttle:120,1')->name('education-institutions.index');
 
             Route::get('applications', [ApplicationController::class, 'index'])->name('applications.index');

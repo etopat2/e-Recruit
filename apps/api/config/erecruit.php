@@ -43,26 +43,6 @@ return [
         'nche_institutions_url' => env('NCHE_INSTITUTIONS_URL', 'https://unche.or.ug/institutions/'),
         'tvet_institutions_url' => env('TVET_INSTITUTIONS_URL', 'https://tvet.go.ug/institutions'),
         'tvet_directory_url' => env('TVET_DIRECTORY_URL', 'https://tvet.go.ug/institution'),
-        'levels' => [
-            'PLE', 'UCE', 'UACE', 'Higher Education Certificate', 'Diploma', 'Higher Diploma',
-            "Bachelor's Degree", 'Postgraduate Certificate', 'Postgraduate Diploma', "Master's Degree",
-            'Doctorate (PhD)', 'Uganda Community Polytechnic Certificate', 'National Certificate (TVET)',
-            'National Craftsperson Certificate (TVET)', 'National Diploma (TVET)', 'Higher National Diploma (TVET)',
-            "Bachelor's Degree (TVET)", 'Informal Skills Certificate (TVET)', 'UVQF Basic / Modular Award',
-            'UVQF Level 1 Certificate', 'UVQF Level 2 Certificate', 'UVQF Level 3 Certificate',
-            'UVQF Level 4 Diploma', "Worker'sPAS", 'Craft Certificate (legacy TVET)',
-        ],
-        'higher_education_levels' => [
-            'Higher Education Certificate', 'Diploma', 'Higher Diploma', "Bachelor's Degree",
-            'Postgraduate Certificate', 'Postgraduate Diploma', "Master's Degree", 'Doctorate (PhD)',
-        ],
-        'tvet_levels' => [
-            'Uganda Community Polytechnic Certificate', 'National Certificate (TVET)',
-            'National Craftsperson Certificate (TVET)', 'National Diploma (TVET)', 'Higher National Diploma (TVET)',
-            "Bachelor's Degree (TVET)", 'Informal Skills Certificate (TVET)', 'UVQF Basic / Modular Award',
-            'UVQF Level 1 Certificate', 'UVQF Level 2 Certificate', 'UVQF Level 3 Certificate',
-            'UVQF Level 4 Diploma', "Worker'sPAS", 'Craft Certificate (legacy TVET)',
-        ],
     ],
     'security' => [
         'privileged_roles' => [

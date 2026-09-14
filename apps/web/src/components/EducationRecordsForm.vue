@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { useId } from 'vue'
+import { onMounted, ref, useId } from 'vue'
 import InstitutionDirectoryField from './InstitutionDirectoryField.vue'
 import FloatingCombobox, { type ComboboxOption } from './FloatingCombobox.vue'
+import FormAlert from './FormAlert.vue'
 import {
   educationLevelFor,
-  educationLevelGroups,
   isKnownEducationLevel,
   isKnownEducationResult,
+  loadEducationLevelGroups,
   resultOptionsForEducationLevel,
+  type EducationLevelGroup,
 } from '../lib/educationQualifications'
 
 export interface EducationRecordDraft {
@@ -23,6 +25,16 @@ export interface EducationRecordDraft {
 
 const records = defineModel<EducationRecordDraft[]>({ required: true })
 const formId = `education-records-${useId()}`
+const educationLevelGroups = ref<readonly EducationLevelGroup[]>([])
+const catalogueError = ref('')
+
+onMounted(async () => {
+  try {
+    educationLevelGroups.value = await loadEducationLevelGroups()
+  } catch (problem) {
+    catalogueError.value = problem instanceof Error ? problem.message : 'The qualification catalogue could not be loaded.'
+  }
+})
 
 function addRecord(): void {
   records.value.push({
@@ -50,24 +62,24 @@ function changeLevel(record: EducationRecordDraft, option: ComboboxOption): void
 }
 
 function levelOptions(record: EducationRecordDraft): ComboboxOption[] {
-  const options = educationLevelGroups.flatMap((group) => group.options.map((option) => ({
+  const options = educationLevelGroups.value.flatMap((group) => group.options.map((option) => ({
     value: option.value,
     label: option.value,
     description: `${option.label} · ${group.label}`,
   })))
-  if (record.level && !isKnownEducationLevel(record.level)) {
+  if (record.level && !isKnownEducationLevel(educationLevelGroups.value, record.level)) {
     options.unshift({ value: record.level, label: record.level, description: 'Previously saved qualification level' })
   }
   return options
 }
 
 function resultOptions(record: EducationRecordDraft): ComboboxOption[] {
-  const options = resultOptionsForEducationLevel(record.level).map((option) => ({
+  const options = resultOptionsForEducationLevel(educationLevelGroups.value, record.level).map((option) => ({
     value: option.value,
     label: option.value,
     description: option.label === option.value ? undefined : option.label,
   }))
-  if (record.result && !isKnownEducationResult(record.level, record.result)) {
+  if (record.result && !isKnownEducationResult(educationLevelGroups.value, record.level, record.result)) {
     options.unshift({ value: record.result, label: record.result, description: 'Previously saved result' })
   }
   return options
@@ -82,7 +94,11 @@ function clearChangedResult(record: EducationRecordDraft, query: string): void {
 }
 
 function guidanceFor(level: string): string {
-  return educationLevelFor(level)?.guidance ?? 'Choose the closest Ugandan equivalent and match the wording on the official award.'
+  return educationLevelFor(educationLevelGroups.value, level)?.guidance ?? 'Choose the closest Ugandan equivalent and match the wording on the official award.'
+}
+
+function directorySearchable(level: string): boolean | undefined {
+  return educationLevelFor(educationLevelGroups.value, level)?.directory_searchable
 }
 </script>
 
@@ -95,6 +111,7 @@ function guidanceFor(level: string): string {
     </div>
     <button type="button" class="button secondary compact" @click="addRecord">Add qualification</button>
   </div>
+  <FormAlert v-if="catalogueError" kind="error" :message="catalogueError" />
 
   <article v-for="(record, index) in records" :key="index" class="repeat-card">
     <div class="education-record-heading">
@@ -103,7 +120,7 @@ function guidanceFor(level: string): string {
     </div>
     <div class="field-grid">
       <FloatingCombobox :id="`${formId}-level-${index}`" label="Level" :model-value="record.level" :options="levelOptions(record)" required placeholder="Search or select education level" @update:model-value="clearChangedLevel(record, $event)" @select="changeLevel(record, $event)" />
-      <InstitutionDirectoryField v-model="records[index]" />
+      <InstitutionDirectoryField v-model="records[index]" :directory-searchable="directorySearchable(record.level)" />
       <label :for="`${formId}-year-${index}`">Completion year
         <input :id="`${formId}-year-${index}`" v-model="record.completion_year" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="YYYY" />
       </label>

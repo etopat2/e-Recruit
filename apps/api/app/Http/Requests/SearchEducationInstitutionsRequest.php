@@ -24,7 +24,7 @@ class SearchEducationInstitutionsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'level' => ['required', 'string', Rule::in(config('erecruit.institution_directory.levels'))],
+            'level' => ['required', 'string', Rule::in(config('education.directory_searchable_levels'))],
             'search' => ['required', 'string', 'min:2', 'max:100'],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:'.config('erecruit.institution_directory.maximum_results')],
         ];

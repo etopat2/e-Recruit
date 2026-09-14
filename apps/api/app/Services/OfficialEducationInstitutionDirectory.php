@@ -80,7 +80,7 @@ class OfficialEducationInstitutionDirectory
                 'registration_number' => null,
                 'registration_status' => $registrationStatus,
                 'operational_status' => 'Listed',
-                'qualification_levels' => config('erecruit.institution_directory.higher_education_levels'),
+                'qualification_levels' => config('education.directory_levels.nche'),
                 'source_url' => $url,
                 'source_payload' => ['programmes_count' => (int) $this->text($cells->item(4))],
                 'active' => true,
@@ -144,7 +144,7 @@ class OfficialEducationInstitutionDirectory
                 'registration_number' => $this->plainText($row['registration_no'] ?? '') ?: null,
                 'registration_status' => $registrationStatus ?: null,
                 'operational_status' => $operationalStatus ?: null,
-                'qualification_levels' => config('erecruit.institution_directory.tvet_levels'),
+                'qualification_levels' => config('education.directory_levels.tvet'),
                 'source_url' => $pageUrl,
                 'source_payload' => [
                     'institute_code' => $this->plainText($row['institute_code'] ?? ''),

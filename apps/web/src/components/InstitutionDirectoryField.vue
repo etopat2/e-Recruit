@@ -18,10 +18,11 @@ export interface EducationInstitutionMatch {
 }
 
 const record = defineModel<EducationRecordDraft>({ required: true })
+const props = defineProps<{ directorySearchable?: boolean }>()
 const fieldId = `institution-directory-${useId()}`
 const query = ref(record.value.institution || '')
 
-const manualEntry = computed(() => Boolean(record.value.institution_not_listed))
+const manualEntry = computed(() => props.directorySearchable === false || Boolean(record.value.institution_not_listed))
 const selectedInstitution = computed(() => record.value.institution_id ? {
   name: record.value.institution,
   source: record.value.institution_source,
@@ -34,9 +35,19 @@ onMounted(() => {
   }
 })
 
-watch(() => record.value.level, () => {
+watch([() => record.value.level, () => props.directorySearchable], () => {
   query.value = ''
-})
+  if (record.value.level && props.directorySearchable === false && !record.value.institution_not_listed) {
+    record.value = {
+      ...record.value,
+      institution: '',
+      institution_id: null,
+      institution_not_listed: true,
+      institution_source: undefined,
+      institution_registration_status: undefined,
+    }
+  }
+}, { immediate: true })
 
 function updateQuery(value: string): void {
   query.value = value
@@ -52,6 +63,7 @@ function updateQuery(value: string): void {
 }
 
 async function loadInstitutions(search: string, signal: AbortSignal): Promise<ComboboxOption[]> {
+  if (props.directorySearchable === false) return []
   const response = await api<{ data: EducationInstitutionMatch[] }>(
     `/education-institutions?level=${encodeURIComponent(record.value.level)}&search=${encodeURIComponent(search)}&limit=7`,
     { cacheTtlMs: 60_000, signal },
@@ -101,7 +113,7 @@ function sourceLabel(source?: string): string {
 
 <template>
   <div class="institution-directory-field">
-    <template v-if="!manualEntry">
+    <template v-if="!manualEntry && props.directorySearchable !== false">
       <FloatingCombobox
         :id="`${fieldId}-search`"
         label="Institution"
@@ -125,7 +137,9 @@ function sourceLabel(source?: string): string {
       </div>
     </template>
 
-    <label class="checkbox institution-not-listed">
+    <p v-if="record.level && props.directorySearchable === false" class="field-help">An official searchable directory is not available for this qualification level. Enter the institution shown on your document.</p>
+
+    <label v-if="props.directorySearchable !== false" class="checkbox institution-not-listed">
       <input :checked="manualEntry" type="checkbox" @change="toggleManualEntry" />
       <span>My institution is not listed</span>
     </label>

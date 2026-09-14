@@ -6,11 +6,24 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SearchEducationInstitutionsRequest;
 use App\Http\Resources\EducationInstitutionResource;
 use App\Models\EducationInstitution;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Str;
 
 class EducationInstitutionController extends Controller
 {
+    public function catalogue(): JsonResponse
+    {
+        $groups = collect(config('education.groups'))->map(fn (array $group): array => [
+            'label' => $group['label'],
+            'options' => collect($group['options'])->map(fn (array $level): array => collect($level)
+                ->except('directory_source')
+                ->all())->all(),
+        ])->all();
+
+        return response()->json(['data' => $groups]);
+    }
+
     public function index(SearchEducationInstitutionsRequest $request): AnonymousResourceCollection
     {
         $data = $request->validated();
