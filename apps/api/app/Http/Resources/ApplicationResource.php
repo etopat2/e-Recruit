@@ -31,6 +31,15 @@ class ApplicationResource extends JsonResource
                 'sections' => $this->post->section_configuration,
                 'hard_copy_required' => $this->post->hard_copy_required,
             ]),
+            'stages' => $this->when(
+                $this->relationLoaded('post') && $this->post->relationLoaded('stages'),
+                fn () => $this->post->stages->map(fn ($stage): array => [
+                    'stage_code' => $stage->stage_code,
+                    'name' => $stage->name,
+                    'sequence' => $stage->sequence,
+                    'required' => $stage->required,
+                ])->values(),
+            ),
             'draft_data' => $this->when(
                 array_key_exists('draft_data', $this->resource->getAttributes())
                     && ($request->user()?->can('update', $this->resource) ?? false),
@@ -47,11 +56,17 @@ class ApplicationResource extends JsonResource
                 'processing_status' => $document->processing_status,
                 'quality_indicators' => $document->quality_indicators,
             ])),
-            'timeline' => $this->whenLoaded('statusHistory', fn () => $this->statusHistory->map(fn ($history): array => [
-                'status' => $history->to_status,
-                'reason' => $history->reason,
-                'at' => $history->created_at,
-            ])),
+            'timeline' => $this->whenLoaded('statusHistory', fn () => $this->statusHistory->map(function ($history) use ($request): array {
+                $event = [
+                    'status' => $history->to_status,
+                    'at' => $history->created_at,
+                ];
+                if ($request->user()?->user_type !== 'applicant') {
+                    $event['reason'] = $history->reason;
+                }
+
+                return $event;
+            })),
         ];
     }
 }

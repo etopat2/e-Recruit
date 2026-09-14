@@ -20,6 +20,19 @@ export interface CampaignPost {
   hard_copy_required: boolean
 }
 
+export interface CampaignStage {
+  stage_code: string
+  name: string
+  sequence: number
+  required: boolean
+}
+
+export interface ApplicationTimelineEvent {
+  status: string
+  at: string
+  reason?: string | null
+}
+
 export interface Campaign {
   id: string
   code: string
@@ -43,5 +56,6 @@ export interface ApplicationRecord {
   campaign: Campaign
   post: CampaignPost
   documents: Array<Record<string, unknown>>
-  timeline: Array<Record<string, unknown>>
+  stages?: CampaignStage[]
+  timeline: ApplicationTimelineEvent[]
 }

@@ -297,13 +297,14 @@ test('verification workbench keeps source evidence and accountable decision toge
 })
 
 test('submitted applicant sees an auditable status timeline and secure inbox', async ({ page }) => {
-  await staffSession(page)
+  await applicantSession(page)
   await page.route('**/api/v1/applications/app-1', async (route) => route.fulfill({ json: { data: {
     id: 'app-1', reference: 'UPS/2026/WRD/000001', status: 'awaiting_hard_copies', entity_version: 3,
     submitted_at: '2026-09-02T08:00:00Z', documents: [],
     campaign: { id: 'campaign-1', code: 'UPS-2026', name: 'UPS Recruitment 2026', year: 2026, status: 'published', opens_at: '2026-09-01T00:00:00Z', closes_at: '2026-09-30T20:59:00Z', hard_copy_deadline_at: '2026-10-05T14:00:00Z', privacy_notice: {} },
     post: { id: 'post-1', code: 'WARDER', name: 'Recruit Warder', description: '', sections: {}, hard_copy_required: true },
-    timeline: [{ status: 'submitted', reason: 'Application submitted', at: '2026-09-02T08:00:00Z' }],
+    stages: ['application', 'hard_copy', 'verification', 'eligibility', 'interview', 'selection', 'medical', 'training'].map((stage_code, index) => ({ stage_code, name: stage_code, sequence: index + 1, required: true })),
+    timeline: [{ status: 'submitted_online', reason: 'Internal submission notes must not appear.', at: '2026-09-02T08:00:00Z' }],
   } } }))
   await page.route('**/api/v1/notifications', async (route) => route.fulfill({ json: { notifications: { data: [{ id: 'notice-1', event_code: 'application.submitted', status: 'delivered', read_at: null, created_at: '2026-09-02T08:01:00Z' }] } } }))
   await page.route('**/api/v1/notifications/push/config', async (route) => route.fulfill({ json: { enabled: false, public_key: '' } }))
@@ -312,7 +313,9 @@ test('submitted applicant sees an auditable status timeline and secure inbox', a
   await page.goto('/applications/app-1/status')
   await expect(page.getByRole('heading', { name: 'UPS/2026/WRD/000001' })).toBeVisible()
   await expect(page.getByText('Submit the required originals or certified copies')).toBeVisible()
-  await expect(page.getByText('Application submitted', { exact: true })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Application progress' })).toContainText('Application Submitted')
+  await expect(page.getByRole('list', { name: 'Application progress' })).toContainText('Documents Received')
+  await expect(page.getByText('Internal submission notes must not appear.')).toHaveCount(0)
   const inboxItem = page.getByRole('button', { name: /application submitted/i })
   await expect(inboxItem).toHaveClass(/unread/)
   await inboxItem.click()

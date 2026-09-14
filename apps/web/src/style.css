@@ -210,6 +210,19 @@ label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
 .status-hero .button { margin: 1rem; }
 .status-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 2rem; margin-top: 3rem; }
 .status-grid article { background: var(--paper); border: 1px solid var(--line); border-radius: .6rem; padding: 2rem; }
+.status-progress-card { grid-column: 1 / -1; }
+.stage-stepper { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0; list-style: none; margin: 0; padding: 1rem 0; }
+.stage-stepper li { position: relative; min-width: 0; padding: 0 .75rem; text-align: center; }
+.stage-stepper li:not(:last-child)::after { content: ''; position: absolute; z-index: 0; top: 1.1rem; left: calc(50% + 1.1rem); right: calc(-50% + 1.1rem); height: 3px; background: var(--line); }
+.stage-stepper i { position: relative; z-index: 1; width: 2.25rem; height: 2.25rem; display: grid; place-items: center; margin: 0 auto .7rem; border: 2px solid var(--line); border-radius: 50%; background: var(--paper); color: var(--muted); font-style: normal; font-size: .78rem; font-weight: 800; }
+.stage-stepper strong, .stage-stepper span, .stage-stepper time { display: block; }
+.stage-stepper strong { color: var(--ink); font-size: .86rem; }
+.stage-stepper span, .stage-stepper time { margin-top: .25rem; color: var(--muted); font-size: .73rem; }
+.stage-stepper li[data-state='completed'] i, .stage-stepper li[data-state='current'] i { border-color: var(--success); background: var(--success); color: white; }
+.stage-stepper li[data-state='completed']::after { background: var(--success); }
+.stage-stepper li[data-state='current'] strong { color: var(--success); }
+.stage-stepper li[data-state='terminal'] i { border-color: var(--danger); background: var(--danger); color: white; }
+.stage-stepper li[data-state='terminal'] strong, .stage-stepper li[data-state='terminal'] span { color: var(--danger); }
 .timeline-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
 .timeline-heading h2, .timeline-heading p { margin-bottom: 0; }
 .timeline-heading > span { color: var(--muted); font-size: .82rem; }
@@ -341,6 +354,10 @@ label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
   .hero-section { min-height: auto; }
   .hero-mark { display: none; }
   .step-grid, .metric-grid, .field-grid, .review-summary, .status-grid, .offline-grid { grid-template-columns: 1fr; }
+  .stage-stepper { display: block; padding-left: .25rem; }
+  .stage-stepper li { display: grid; grid-template-columns: 2.25rem 1fr; gap: 1rem; padding: 0 0 1.5rem; text-align: left; }
+  .stage-stepper li:not(:last-child)::after { top: 2.1rem; bottom: .1rem; left: 1.05rem; right: auto; width: 3px; height: auto; }
+  .stage-stepper i { margin: 0; }
   .section-heading, .workspace-heading, .site-footer { align-items: stretch; flex-direction: column; }
   .progress-card { min-width: 0; }
   .campaign-grid { grid-template-columns: 1fr; }

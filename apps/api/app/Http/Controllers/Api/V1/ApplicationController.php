@@ -106,7 +106,14 @@ class ApplicationController extends Controller
     {
         $this->authorize('view', $application);
 
-        return new ApplicationResource($application->load(['campaign', 'post', 'documents', 'statusHistory']));
+        return new ApplicationResource($application->load([
+            'campaign',
+            'post.stages' => fn ($query) => $query
+                ->where('campaign_version_id', $application->campaign_version_id)
+                ->orderBy('sequence'),
+            'documents',
+            'statusHistory',
+        ]));
     }
 
     public function update(StoreApplicationDraftRequest $request, Application $application, AuditService $audit): ApplicationResource|JsonResponse

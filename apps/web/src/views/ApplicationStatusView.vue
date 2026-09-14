@@ -1,16 +1,32 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import FormAlert from '../components/FormAlert.vue'
 import SkeletonBlock from '../components/SkeletonBlock.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { api, authToken, jsonBody } from '../lib/api'
+import { applicantOutcomeLabel, progressForApplication } from '../lib/applicationProgress'
 import type { ApplicationRecord } from '../types'
 
-interface PortalNotification { id: string; event_code: string; status: string; read_at: string | null; created_at: string }
-const route = useRoute(); const application = ref<ApplicationRecord | null>(null); const error = ref(''); const notice = ref('')
+interface PortalNotification {
+  id: string
+  event_code: string
+  status: string
+  read_at: string | null
+  created_at: string
+}
+
+const route = useRoute()
+const application = ref<ApplicationRecord | null>(null)
+const error = ref('')
+const notice = ref('')
 const loading = ref(true)
-const notifications = ref<PortalNotification[]>([]); const pushConfig = ref({ enabled: false, public_key: '' }); const pushBusy = ref(false)
+const notifications = ref<PortalNotification[]>([])
+const pushConfig = ref({ enabled: false, public_key: '' })
+const pushBusy = ref(false)
+const progress = computed(() => application.value
+  ? progressForApplication(application.value.stages ?? [], application.value.timeline)
+  : [])
 
 onMounted(async () => {
   try {
@@ -19,18 +35,32 @@ onMounted(async () => {
       api<{ notifications: { data: PortalNotification[] } }>('/notifications'),
       api<{ enabled: boolean; public_key: string }>('/notifications/push/config'),
     ])
-    application.value = record.data; notifications.value = inbox.notifications.data; pushConfig.value = config
-  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Record unavailable.' } finally { loading.value = false }
+    application.value = record.data
+    notifications.value = inbox.notifications.data
+    pushConfig.value = config
+  } catch (problem) {
+    error.value = problem instanceof Error ? problem.message : 'Record unavailable.'
+  } finally {
+    loading.value = false
+  }
 })
 
-async function downloadAcknowledgement() {
+async function downloadAcknowledgement(): Promise<void> {
   const response = await fetch(`/api/v1/applications/${route.params.id}/acknowledgement`, { headers: { Authorization: `Bearer ${authToken()}` } })
-  if (!response.ok) { error.value = 'Acknowledgement is not available.'; return }
-  const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = `${application.value?.reference || 'UPS'}-acknowledgement.pdf`; link.click(); URL.revokeObjectURL(link.href)
+  if (!response.ok) {
+    error.value = 'Acknowledgement is not available.'
+    return
+  }
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(await response.blob())
+  link.download = `${application.value?.reference || 'UPS'}-acknowledgement.pdf`
+  link.click()
+  URL.revokeObjectURL(link.href)
 }
 
-async function enablePush() {
-  pushBusy.value = true; error.value = ''
+async function enablePush(): Promise<void> {
+  pushBusy.value = true
+  error.value = ''
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('This browser does not support secure push notifications.')
     const permission = await Notification.requestPermission()
@@ -38,14 +68,21 @@ async function enablePush() {
     const registration = await navigator.serviceWorker.ready
     const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey(pushConfig.value.public_key) })
     const serialised = subscription.toJSON()
-    await api('/notifications/push/subscriptions', { method: 'POST', ...jsonBody({ endpoint: subscription.endpoint, keys: serialised.keys, content_encoding: 'aes128gcm' }) })
+    await api('/notifications/push/subscriptions', {
+      method: 'POST',
+      ...jsonBody({ endpoint: subscription.endpoint, keys: serialised.keys, content_encoding: 'aes128gcm' }),
+    })
     notice.value = 'Push notifications enabled for this browser. Sensitive details remain inside the secure portal.'
-  } catch (problem) { error.value = problem instanceof Error ? problem.message : 'Push enrolment failed.' }
-  finally { pushBusy.value = false }
+  } catch (problem) {
+    error.value = problem instanceof Error ? problem.message : 'Push enrolment failed.'
+  } finally {
+    pushBusy.value = false
+  }
 }
 
-async function markRead(item: PortalNotification) {
-  await api(`/notifications/${item.id}/read`, { method: 'POST' }); item.read_at = new Date().toISOString()
+async function markRead(item: PortalNotification): Promise<void> {
+  await api(`/notifications/${item.id}/read`, { method: 'POST' })
+  item.read_at = new Date().toISOString()
 }
 
 function vapidKey(value: string): Uint8Array<ArrayBuffer> {
@@ -58,8 +95,76 @@ function vapidKey(value: string): Uint8Array<ArrayBuffer> {
 <template>
   <section v-if="application" class="status-page">
     <FormAlert v-if="notice" kind="success" :message="notice" page />
-    <div class="status-hero"><p class="eyebrow">Application record</p><h1>{{ application.reference || 'Draft application' }}</h1><StatusBadge :status="application.status" /><p>{{ application.campaign.name }} · {{ application.post.name }}</p><div class="button-row"><button v-if="application.submitted_at" class="button secondary" @click="downloadAcknowledgement">Download acknowledgement</button><button v-if="pushConfig.enabled" class="button secondary" :disabled="pushBusy" @click="enablePush">{{ pushBusy ? 'Enabling…' : 'Enable push updates' }}</button></div></div>
-    <div class="status-grid"><article><h2>What happens next</h2><p v-if="application.status === 'awaiting_hard_copies'">Submit the required originals or certified copies by the campaign deadline. Keep the receipt.</p><p v-else>Your record is moving through the published recruitment stages. Any action required from you will appear here.</p><RouterLink to="/help">Ask for help or submit an appeal</RouterLink><h3>Secure inbox</h3><p v-if="!notifications.length">No portal updates yet.</p><button v-for="item in notifications" :key="item.id" class="notification-row" :class="{ unread: !item.read_at }" @click="markRead(item)"><span>{{ item.event_code.replaceAll('.', ' ') }}</span><small>{{ new Date(item.created_at).toLocaleString() }}</small></button></article><article><div class="timeline-heading"><div><p class="eyebrow">Recorded history</p><h2>Application activity</h2></div><span>{{ application.timeline.length }} event(s)</span></div><p v-if="!application.timeline.length" class="empty-state compact">No activity has been recorded yet.</p><ol v-else class="timeline"><li v-for="(event, index) in application.timeline" :key="String(event.at)"><i aria-hidden="true">{{ index + 1 }}</i><div><strong>{{ String(event.status).replaceAll('_', ' ') }}</strong><p>{{ event.reason || 'Status updated.' }}</p><time :datetime="String(event.at)">{{ new Date(String(event.at)).toLocaleString() }}</time></div></li></ol><p class="timeline-note">This history shows recorded events only. Future stages appear after an authorised action is recorded.</p></article></div>
+    <div class="status-hero">
+      <p class="eyebrow">Application record</p>
+      <h1>{{ application.reference || 'Draft application' }}</h1>
+      <StatusBadge :status="application.status" />
+      <p>{{ application.campaign.name }} · {{ application.post.name }}</p>
+      <div class="button-row">
+        <button v-if="application.submitted_at" class="button secondary" @click="downloadAcknowledgement">Download acknowledgement</button>
+        <button v-if="pushConfig.enabled" class="button secondary" :disabled="pushBusy" @click="enablePush">{{ pushBusy ? 'Enabling…' : 'Enable push updates' }}</button>
+      </div>
+    </div>
+
+    <div class="status-grid">
+      <article class="status-progress-card">
+        <div class="timeline-heading">
+          <div>
+            <p class="eyebrow">Recruitment journey</p>
+            <h2>Application progress</h2>
+          </div>
+          <span>Published campaign stages</span>
+        </div>
+        <p v-if="!progress.length" class="empty-state compact">The campaign stage list is not available for this application.</p>
+        <ol v-else class="stage-stepper" aria-label="Application progress">
+          <li v-for="(stage, index) in progress" :key="stage.code" :data-state="stage.state" :aria-current="stage.state === 'current' || stage.state === 'terminal' ? 'step' : undefined">
+            <i aria-hidden="true">{{ stage.state === 'completed' ? '✓' : index + 1 }}</i>
+            <div>
+              <strong>{{ stage.label }}</strong>
+              <span v-if="stage.outcome">{{ stage.outcome }}</span>
+              <span v-else>Upcoming</span>
+              <time v-if="stage.recordedAt" :datetime="stage.recordedAt">{{ new Date(stage.recordedAt).toLocaleString() }}</time>
+            </div>
+          </li>
+        </ol>
+        <p class="timeline-note">This progress view contains stage and outcome labels only. Internal notes, reasons, and scores are never shown here.</p>
+      </article>
+
+      <article>
+        <h2>What happens next</h2>
+        <p v-if="application.status === 'awaiting_hard_copies'">Submit the required originals or certified copies by the campaign deadline. Keep the receipt.</p>
+        <p v-else>Your record is moving through the published recruitment stages. Any action required from you will appear here.</p>
+        <RouterLink to="/help">Ask for help or submit an appeal</RouterLink>
+        <h3>Secure inbox</h3>
+        <p v-if="!notifications.length">No portal updates yet.</p>
+        <button v-for="item in notifications" :key="item.id" class="notification-row" :class="{ unread: !item.read_at }" @click="markRead(item)">
+          <span>{{ item.event_code.replaceAll('.', ' ') }}</span>
+          <small>{{ new Date(item.created_at).toLocaleString() }}</small>
+        </button>
+      </article>
+
+      <article>
+        <div class="timeline-heading">
+          <div>
+            <p class="eyebrow">Recorded history</p>
+            <h2>Application activity</h2>
+          </div>
+          <span>{{ application.timeline.length }} event(s)</span>
+        </div>
+        <p v-if="!application.timeline.length" class="empty-state compact">No activity has been recorded yet.</p>
+        <ol v-else class="timeline">
+          <li v-for="(event, index) in application.timeline" :key="event.at">
+            <i aria-hidden="true">{{ index + 1 }}</i>
+            <div>
+              <strong>{{ applicantOutcomeLabel(event.status) }}</strong>
+              <time :datetime="event.at">{{ new Date(event.at).toLocaleString() }}</time>
+            </div>
+          </li>
+        </ol>
+        <p class="timeline-note">This history shows recorded events only. Future stages appear after an authorised action is recorded.</p>
+      </article>
+    </div>
   </section>
-  <FormAlert v-else-if="error" kind="error" :message="error" page /><section v-else-if="loading" class="content-section"><SkeletonBlock :lines="6" label="Loading application status" /></section>
+  <FormAlert v-else-if="error" kind="error" :message="error" page />
+  <section v-else-if="loading" class="content-section"><SkeletonBlock :lines="6" label="Loading application status" /></section>
 </template>
