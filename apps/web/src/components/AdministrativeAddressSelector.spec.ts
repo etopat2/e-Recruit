@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AdministrativeAddressSelector from './AdministrativeAddressSelector.vue'
 
@@ -12,9 +12,45 @@ const lineage = {
   village: { id: '01ARZ3NDEKTSV4RRFFQ69G5FB1', code: 'village:blue-room', name: 'BLUE ROOM', unit_type: 'village' },
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('AdministrativeAddressSelector', () => {
+  it('searches the floating district list without expanding the field inline', async () => {
+    const districts = Array.from({ length: 9 }, (_, index) => ({
+      id: `district-${index}`,
+      code: `district:${index}`,
+      name: index === 8 ? 'MBARARA CITY' : `DISTRICT ${index}`,
+      level: 'district',
+      unit_type: index === 8 ? 'city' : 'district',
+      parent_id: null,
+      full_address: index === 8 ? 'MBARARA CITY, WESTERN' : `DISTRICT ${index}, CENTRAL`,
+      lineage: {
+        region: lineage.region,
+        subregion: lineage.subregion,
+        district: { id: `district-${index}`, code: `district:${index}`, name: index === 8 ? 'MBARARA CITY' : `DISTRICT ${index}`, unit_type: 'district' },
+        county: null, subcounty: null, parish: null, village: null,
+      },
+    }))
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const data = String(input).includes('level=district') ? districts : []
+      return new Response(JSON.stringify({ data }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    const rendered = render(AdministrativeAddressSelector, { props: { modelValue: {} } })
+    const district = await screen.findByRole('combobox', { name: /district \/ city/i })
+    await waitFor(() => expect(district).toBeEnabled())
+    await fireEvent.update(district, 'Mbarara')
+    const option = await screen.findByRole('option', { name: /MBARARA CITY/i })
+    expect(option.closest('[role="listbox"]')?.parentElement).toBe(document.body)
+    await fireEvent.click(option)
+
+    const updates = rendered.emitted()['update:modelValue'] as Array<[Record<string, string>]>
+    expect(updates.at(-1)?.[0].district).toBe('MBARARA CITY')
+  })
+
   it('fills every administrative field when a village search result is selected', async () => {
     const village = {
       ...lineage.village,

@@ -70,7 +70,7 @@ const clientMatches = computed(() => {
   const options = normalized
     ? props.options.filter((option) => `${option.label} ${option.description || ''}`.toLocaleLowerCase().includes(normalized))
     : props.options
-  return options.slice(0, Math.max(props.maxVisible * 4, props.maxVisible))
+  return options
 })
 
 watch(() => props.modelValue, (value) => {
@@ -120,7 +120,7 @@ async function load(search: string): Promise<void> {
   try {
     const options = await props.loadOptions?.(search, controller.signal)
     if (controller.signal.aborted || search !== query.value.trim()) return
-    results.value = (options || []).slice(0, Math.max(props.maxVisible * 4, props.maxVisible))
+    results.value = options || []
     searched.value = true
     activeIndex.value = results.value.findIndex((option) => !option.disabled)
   } catch (problem) {
@@ -208,7 +208,8 @@ function updatePosition(): void {
   const viewportHeight = window.innerHeight
   const width = Math.min(Math.max(rectangle.width, 280), viewportWidth - 16)
   const left = Math.max(8, Math.min(rectangle.left, viewportWidth - width - 8))
-  const estimatedHeight = Math.min(panel.value?.offsetHeight || props.maxVisible * 64 + 24, viewportHeight - 24)
+  const maximumPanelHeight = props.maxVisible * 60 + 8
+  const estimatedHeight = Math.min(panel.value?.offsetHeight || maximumPanelHeight, maximumPanelHeight, viewportHeight - 24)
   const below = viewportHeight - rectangle.bottom - 8
   const above = rectangle.top - 8
   const placeAbove = below < Math.min(estimatedHeight, 280) && above > below
@@ -216,7 +217,7 @@ function updatePosition(): void {
     left: `${left}px`,
     top: `${placeAbove ? Math.max(8, rectangle.top - estimatedHeight - 6) : rectangle.bottom + 6}px`,
     width: `${width}px`,
-    maxHeight: `${Math.max(120, Math.min(placeAbove ? above - 6 : below - 6, estimatedHeight))}px`,
+    maxHeight: `${Math.max(80, Math.min(placeAbove ? above - 6 : below - 6, estimatedHeight))}px`,
   }
   panel.value?.setAttribute('data-placement', placeAbove ? 'top' : 'bottom')
 }
@@ -282,6 +283,7 @@ onBeforeUnmount(() => {
           :key="option.value"
           type="button"
           role="option"
+          :aria-label="option.description ? `${option.label} — ${option.description}` : option.label"
           :disabled="option.disabled"
           :aria-selected="activeIndex === index"
           @mouseenter="activeIndex = index"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { api, jsonBody } from '../lib/api'
+import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
 
 const notice = ref('')
 const error = ref('')
@@ -17,6 +18,12 @@ const trainingInvite = reactive({ final_selection_id: '', reporting_date: '', re
 const trainingReport = reactive({ training_invite_id: '', status: 'reported', notes: '' })
 const replacement = reactive({ replaced_application_id: '', selection_run_id: '', trigger: 'training_vacancy', reason: '' })
 const replacementDecision = reactive({ recommendation_id: '', decision: 'approve', reason: '', approval_reference: '' })
+const trainingStatuses = ['expected', 'reported', 'verified', 'admitted', 'late', 'documentation_incomplete', 'no_show', 'withdrawn', 'replacement', 'not_reported', 'declined']
+const trainingStatusOptions: ComboboxOption[] = trainingStatuses.map((status) => ({ value: status, label: status.replaceAll('_', ' ') }))
+
+function trainingStatusLabel(status: string): string {
+  return status.replaceAll('_', ' ')
+}
 
 function ids(value: string): string[] {
   return value.split(',').map((item) => item.trim()).filter(Boolean)
@@ -134,7 +141,7 @@ function decideReplacement() {
   <section class="content-section"><div class="section-heading"><div><p class="eyebrow">Training intake</p><h2>Invitation, reporting, and reserve control</h2></div></div>
     <div class="configuration-layout">
       <form class="form-panel" @submit.prevent="issueTrainingInvite"><h3>Issue training invitation</h3><label>Final selection ID<input v-model="trainingInvite.final_selection_id" required /></label><div class="field-grid"><label>Date<input v-model="trainingInvite.reporting_date" type="date" required /></label><label>Time<input v-model="trainingInvite.reporting_time" type="time" required /></label></div><label>Training location<input v-model="trainingInvite.location" required /></label><label>Instructions (JSON array)<textarea v-model="trainingInvite.instructions" required /></label><button class="button primary full" :disabled="busy === 'training-invite'">Issue protected invitation</button></form>
-      <form class="form-panel" @submit.prevent="recordTrainingReport"><h3>Record training reporting</h3><label>Training invitation ID<input v-model="trainingReport.training_invite_id" required /></label><label>Status<select v-model="trainingReport.status"><option v-for="status in ['expected','reported','verified','admitted','late','documentation_incomplete','no_show','withdrawn','replacement','not_reported','declined']" :key="status">{{ status }}</option></select></label><label>Reporting notes<textarea v-model="trainingReport.notes" /></label><button class="button primary full" :disabled="busy === 'training-report'">Record reporting status</button></form>
+      <form class="form-panel" @submit.prevent="recordTrainingReport"><h3>Record training reporting</h3><label>Training invitation ID<input v-model="trainingReport.training_invite_id" required /></label><FloatingCombobox label="Status" :model-value="trainingStatusLabel(trainingReport.status)" :options="trainingStatusOptions" required placeholder="Search or select status" @update:model-value="trainingReport.status = ''" @select="trainingReport.status = $event.value" /><label>Reporting notes<textarea v-model="trainingReport.notes" /></label><button class="button primary full" :disabled="busy === 'training-report'">Record reporting status</button></form>
       <form class="form-panel" @submit.prevent="recommendReplacement"><h3>Recommend next reserve</h3><label>Candidate being replaced - application ID<input v-model="replacement.replaced_application_id" required /></label><label>Certified selection run ID<input v-model="replacement.selection_run_id" required /></label><label>Trigger<select v-model="replacement.trigger"><option value="not_fit">Not fit</option><option value="no_show">No show</option><option value="withdrawal">Withdrawal</option><option value="training_vacancy">Training vacancy</option></select></label><label>Reason<textarea v-model="replacement.reason" minlength="20" required /></label><button class="button primary full" :disabled="busy === 'replacement'">Recommend strict-order reserve</button></form>
       <form class="form-panel" @submit.prevent="decideReplacement"><h3>Independent replacement decision</h3><label>Recommendation ID<input v-model="replacementDecision.recommendation_id" required /></label><label>Decision<select v-model="replacementDecision.decision"><option value="approve">Approve</option><option value="reject">Reject</option></select></label><label>Decision reason<textarea v-model="replacementDecision.reason" minlength="20" required /></label><label>Approval reference<input v-model="replacementDecision.approval_reference" required /></label><button class="button primary full" :disabled="busy === 'replacement-decision'">Record independent decision</button></form>
     </div>

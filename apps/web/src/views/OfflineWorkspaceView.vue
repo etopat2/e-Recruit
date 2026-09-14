@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { liveQuery } from 'dexie'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { api, jsonBody } from '../lib/api'
 import { configureOfflineUnlock, getOfflinePackage, lockOfflineData, offlineDb, offlineUnlockState, openOfflineValue, putOfflinePackage, sealOfflineValue, unlockOfflineData, type OfflineEvent } from '../offline/database'
@@ -39,6 +40,12 @@ const capture = reactive({
 })
 const activeEvents = computed(() => events.value.filter((event) => event.packageId === packageId.value))
 const selectedRecord = computed(() => packPayload.value?.server_records.find((record) => record.entity_id === capture.entityId))
+const packRecordOptions = computed<ComboboxOption[]>(() => (packPayload.value?.server_records || []).map((record) => ({
+  value: record.entity_id,
+  label: String(record.payload.application_reference || record.payload.panel_code || record.entity_id),
+  description: `Version ${record.server_version} · ${record.entity_type}`,
+})))
+const selectedRecordName = computed(() => packRecordOptions.value.find((option) => option.value === capture.entityId)?.label || '')
 const definition = computed(() => definitions[packPayload.value?.package.pack_type || provision.packType])
 const subscription = liveQuery(() => offlineDb.events.orderBy('local_sequence').toArray()).subscribe((items) => { events.value = items })
 const updateOnline = () => { online.value = window.navigator.onLine }
@@ -267,7 +274,7 @@ async function purgePack(message: string) {
 
       <article class="form-panel">
         <h2>2. Capture {{ definition.label.toLowerCase() }}</h2>
-        <label>Pack record<select v-model="capture.entityId" :disabled="!packageId"><option v-for="record in packPayload?.server_records" :key="record.entity_id" :value="record.entity_id">{{ record.payload.application_reference || record.payload.panel_code || record.entity_id }} · v{{ record.server_version }}</option></select></label>
+        <FloatingCombobox label="Pack record" :model-value="selectedRecordName" :options="packRecordOptions" :disabled="!packageId" placeholder="Search or select scoped record" @update:model-value="capture.entityId = ''" @select="capture.entityId = $event.value" />
         <div v-if="definition.action === 'ASSESSMENT_SCORE_RECORDED'" class="field-grid"><label>Score<input v-model="capture.score" type="number" min="0" /></label><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'ATTENDANCE_RECORDED'" class="field-grid"><label>Status<select v-model="capture.attendanceStatus"><option v-for="status in ['present','late','absent','referred','disqualified','excused','no_show']" :key="status">{{ status }}</option></select></label><label class="wide">Exception notes<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'HARDCOPY_RECEIPT_RECORDED'" class="field-grid"><label>Receiving office<input v-model="capture.receivingOffice" /></label><label>Received at<input v-model="capture.receivedAt" type="datetime-local" /></label><label class="wide">Document checks (JSON)<textarea v-model="capture.hardCopyItems" rows="5" /></label><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>

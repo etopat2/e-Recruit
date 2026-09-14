@@ -13,16 +13,22 @@ describe('EducationRecordsForm', () => {
     const result = screen.getByLabelText(/Result \/ class/)
     expect(result).toBeDisabled()
 
-    await fireEvent.update(level, 'UCE')
+    await fireEvent.focus(level)
+    expect(screen.getAllByRole('option')).toHaveLength(32)
+    await fireEvent.click(screen.getByRole('option', { name: /^UCE /i }))
     expect(result).toBeEnabled()
-    expect(screen.getByRole('option', { name: /Result 1 — certificate awarded/i })).toBeInTheDocument()
+    await fireEvent.focus(result)
+    expect(screen.getByRole('option', { name: /Result 1.*certificate awarded/i })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /3 Principal-level passes/i })).not.toBeInTheDocument()
 
-    await fireEvent.update(result, 'Result 1 (Certificate awarded)')
+    await fireEvent.click(screen.getByRole('option', { name: /Result 1.*certificate awarded/i }))
     expect(records[0].result).toBe('Result 1 (Certificate awarded)')
 
+    await fireEvent.focus(level)
     await fireEvent.update(level, 'UACE')
+    await fireEvent.click(screen.getByRole('option', { name: /^UACE /i }))
     expect(records[0].result).toBe('')
+    await fireEvent.focus(result)
     expect(screen.getByRole('option', { name: /3 Principal-level passes/i })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /Result 1 — certificate awarded/i })).not.toBeInTheDocument()
   })
@@ -40,7 +46,7 @@ describe('EducationRecordsForm', () => {
     expect(screen.getByLabelText(/Result \/ class/)).toHaveValue('Excellent')
   })
 
-  it('preserves a historical result attached to a recognised level', () => {
+  it('preserves a historical result attached to a recognised level', async () => {
     const records: EducationRecordDraft[] = [{
       level: 'Diploma',
       institution: 'Example Institute',
@@ -51,7 +57,8 @@ describe('EducationRecordsForm', () => {
 
     expect(screen.getByLabelText('Level')).toHaveValue('Diploma')
     expect(screen.getByLabelText(/Result \/ class/)).toHaveValue('Old transcript classification')
-    expect(screen.getByRole('option', { name: 'Old transcript classification (previously saved)' })).toBeInTheDocument()
+    await fireEvent.focus(screen.getByLabelText(/Result \/ class/))
+    expect(screen.getByRole('option', { name: /Old transcript classification.*Previously saved/i })).toBeInTheDocument()
   })
 
   it('adds and removes qualification records', async () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { onMounted, ref, useId } from 'vue'
 import { api } from '../lib/api'
+import FloatingCombobox, { type ComboboxOption } from './FloatingCombobox.vue'
 
 type Level = 'region' | 'subregion' | 'district' | 'county' | 'subcounty' | 'parish' | 'village'
 interface LineageUnit { id: string; code: string; name: string; unit_type: string | null }
@@ -19,7 +20,6 @@ type AddressValue = Record<string, string | number | null | undefined>
 const props = defineProps<{ modelValue: AddressValue }>()
 const emit = defineEmits<{ 'update:modelValue': [value: AddressValue] }>()
 const villageControlId = `administrative-village-${useId()}`
-const villageResultsId = `${villageControlId}-results`
 
 const districts = ref<AdministrativeUnit[]>([])
 const counties = ref<AdministrativeUnit[]>([])
@@ -27,12 +27,8 @@ const subcounties = ref<AdministrativeUnit[]>([])
 const parishes = ref<AdministrativeUnit[]>([])
 const villages = ref<AdministrativeUnit[]>([])
 const villageQuery = ref('')
-const villageResults = ref<AdministrativeUnit[]>([])
-const activeVillageIndex = ref(-1)
 const loading = ref<Record<string, boolean>>({})
 const error = ref('')
-let searchTimer = 0
-let searchSequence = 0
 
 onMounted(async () => {
   const districtId = value('district_id')
@@ -49,8 +45,6 @@ onMounted(async () => {
     ...(parishId ? [loadUnits('village', { parish_id: parishId }, villages)] : []),
   ])
 })
-
-onBeforeUnmount(() => window.clearTimeout(searchTimer))
 
 function value(key: string): string {
   return String(props.modelValue[key] || '')
@@ -91,18 +85,10 @@ function clearBelow(level: Level): AddressValue {
   return next
 }
 
-async function chooseDistrict(event: Event) {
-  const id = (event.target as HTMLSelectElement).value
+async function chooseDistrict(unit: AdministrativeUnit) {
+  const id = unit.id
   counties.value = []; subcounties.value = []; parishes.value = []; villages.value = []
-  villageQuery.value = ''; villageResults.value = []
-  if (!id) {
-    const next = clearBelow('region')
-    next.region_id = null; next.region = null; next.subregion_id = null; next.subregion = null; next.district_id = null; next.district = null
-    emit('update:modelValue', next)
-    return
-  }
-  const unit = districts.value.find((item) => item.id === id)
-  if (!unit) return
+  villageQuery.value = ''
   emit('update:modelValue', clearBelowSelection(unit, 'district'))
   await Promise.all([
     loadUnits('county', { district_id: id }, counties),
@@ -110,41 +96,26 @@ async function chooseDistrict(event: Event) {
   ])
 }
 
-async function chooseCounty(event: Event) {
-  const id = (event.target as HTMLSelectElement).value
+async function chooseCounty(unit: AdministrativeUnit) {
+  const id = unit.id
   parishes.value = []; villages.value = []
-  villageQuery.value = ''; villageResults.value = []
-  const districtId = value('district_id')
-  if (!id) {
-    const next = clearBelow('district'); next.county_id = null; next.county = null
-    emit('update:modelValue', next)
-    if (districtId) await loadUnits('subcounty', { district_id: districtId }, subcounties)
-    return
-  }
-  const unit = counties.value.find((item) => item.id === id)
-  if (!unit) return
+  villageQuery.value = ''
   emit('update:modelValue', clearBelowSelection(unit, 'county'))
   await loadUnits('subcounty', { county_id: id }, subcounties)
 }
 
-async function chooseSubcounty(event: Event) {
-  const id = (event.target as HTMLSelectElement).value
+async function chooseSubcounty(unit: AdministrativeUnit) {
+  const id = unit.id
   parishes.value = []; villages.value = []
-  villageQuery.value = ''; villageResults.value = []
-  if (!id) { emit('update:modelValue', clearBelow('county')); return }
-  const unit = subcounties.value.find((item) => item.id === id)
-  if (!unit) return
+  villageQuery.value = ''
   emit('update:modelValue', clearBelowSelection(unit, 'subcounty'))
   await loadUnits('parish', { subcounty_id: id }, parishes)
 }
 
-async function chooseParish(event: Event) {
-  const id = (event.target as HTMLSelectElement).value
+async function chooseParish(unit: AdministrativeUnit) {
+  const id = unit.id
   villages.value = []
-  villageQuery.value = ''; villageResults.value = []
-  if (!id) { emit('update:modelValue', clearBelow('subcounty')); return }
-  const unit = parishes.value.find((item) => item.id === id)
-  if (!unit) return
+  villageQuery.value = ''
   emit('update:modelValue', clearBelowSelection(unit, 'parish'))
   await loadUnits('village', { parish_id: id }, villages)
 }
@@ -160,40 +131,9 @@ function clearBelowSelection(unit: AdministrativeUnit, level: Level): AddressVal
   return next
 }
 
-function searchVillages() {
-  window.clearTimeout(searchTimer)
-  const sequence = ++searchSequence
-  const search = villageQuery.value.trim()
-  activeVillageIndex.value = -1
-  if (value('village_id')) emit('update:modelValue', clearBelow('parish'))
-  if (!search) {
-    loading.value.search = false
-    villageResults.value = value('parish_id') ? villages.value.slice(0, 25) : []
-    return
-  }
-  if (search.length < 2) { loading.value.search = false; villageResults.value = []; return }
-  searchTimer = window.setTimeout(async () => {
-    loading.value.search = true; error.value = ''; villageResults.value = []
-    try {
-      const query = new URLSearchParams({ level: 'village', search, limit: '25' })
-      const response = await api<{ data: AdministrativeUnit[] }>(`/geography/units?${query}`, { cacheTtlMs: 60_000 })
-      if (sequence !== searchSequence) return
-      villageResults.value = response.data
-    } catch (problem) {
-      if (sequence === searchSequence) error.value = problem instanceof Error ? problem.message : 'Village search failed.'
-    } finally {
-      if (sequence === searchSequence) loading.value.search = false
-    }
-  }, 300)
-}
-
 async function chooseSearchResult(unit: AdministrativeUnit) {
-  window.clearTimeout(searchTimer)
-  searchSequence++
   emit('update:modelValue', mergedSelection(unit))
   villageQuery.value = unit.name
-  villageResults.value = []
-  activeVillageIndex.value = -1
   const districtId = unit.lineage.district?.id
   const countyId = unit.lineage.county?.id
   const subcountyId = unit.lineage.subcounty?.id
@@ -206,66 +146,77 @@ async function chooseSearchResult(unit: AdministrativeUnit) {
   ])
 }
 
-function showVillageOptions() {
-  if (!villageQuery.value && value('parish_id')) villageResults.value = villages.value.slice(0, 25)
-}
-
-function moveVillageResult(direction: number) {
-  if (!villageResults.value.length) return
-  activeVillageIndex.value = (activeVillageIndex.value + direction + villageResults.value.length) % villageResults.value.length
-}
-
-function chooseActiveVillage() {
-  const unit = villageResults.value[activeVillageIndex.value]
-  if (unit) void chooseSearchResult(unit)
-}
-
 function typeLabel(unit: AdministrativeUnit): string {
   return (unit.unit_type || unit.level).replaceAll('-', ' ')
+}
+
+function unitOptions(units: AdministrativeUnit[]): ComboboxOption[] {
+  return units.map((unit) => ({
+    value: unit.id,
+    label: unit.name,
+    description: `${typeLabel(unit)} · ${unit.full_address}`,
+    data: unit,
+  }))
+}
+
+function unitFromOption(option: ComboboxOption): AdministrativeUnit {
+  return option.data as AdministrativeUnit
+}
+
+function updateUnitQuery(level: Exclude<Level, 'region' | 'subregion' | 'village'>, query: string): void {
+  if (!value(`${level}_id`) || query === value(level)) return
+  const next = level === 'district' ? clearBelow('region') : clearBelow({ county: 'district', subcounty: 'county', parish: 'subcounty' }[level] as Level)
+  next[`${level}_id`] = null
+  next[level] = null
+  if (level === 'district') {
+    next.region_id = null; next.region = null; next.subregion_id = null; next.subregion = null
+    counties.value = []; subcounties.value = []; parishes.value = []; villages.value = []
+  } else if (level === 'county') {
+    parishes.value = []; villages.value = []
+  } else if (level === 'subcounty') {
+    parishes.value = []; villages.value = []
+  } else {
+    villages.value = []
+  }
+  emit('update:modelValue', next)
+}
+
+function updateVillageQuery(query: string): void {
+  villageQuery.value = query
+  if (value('village_id') && query !== value('village')) emit('update:modelValue', clearBelow('parish'))
+}
+
+async function loadVillageOptions(search: string, signal: AbortSignal): Promise<ComboboxOption[]> {
+  if (!search.trim() && value('parish_id')) return unitOptions(villages.value.slice(0, 25))
+  const query = new URLSearchParams({ level: 'village', search: search.trim(), limit: '25' })
+  const response = await api<{ data: AdministrativeUnit[] }>(`/geography/units?${query}`, { cacheTtlMs: 60_000, signal })
+  return unitOptions(response.data)
 }
 </script>
 
 <template>
   <div class="administrative-address">
     <div class="field-grid">
-      <label>District / city
-        <select :value="value('district_id')" required :disabled="loading.district" @change="chooseDistrict"><option value="">{{ loading.district ? 'Loading…' : 'Select district or city' }}</option><option v-for="unit in districts" :key="unit.id" :value="unit.id">{{ unit.name }} ({{ typeLabel(unit) }})</option></select>
-      </label>
-      <label>County / municipality
-        <select :value="value('county_id')" :disabled="!value('district_id') || loading.county" @change="chooseCounty"><option value="">{{ loading.county ? 'Loading…' : 'Not applicable / select county' }}</option><option v-for="unit in counties" :key="unit.id" :value="unit.id">{{ unit.name }} ({{ typeLabel(unit) }})</option></select>
-      </label>
-      <label>Sub-county / town / division
-        <select :value="value('subcounty_id')" :disabled="!value('district_id') || loading.subcounty" @change="chooseSubcounty"><option value="">{{ loading.subcounty ? 'Loading…' : 'Select sub-county, town, or division' }}</option><option v-for="unit in subcounties" :key="unit.id" :value="unit.id">{{ unit.name }} ({{ typeLabel(unit) }})</option></select>
-      </label>
-      <label>Parish / ward
-        <select :value="value('parish_id')" :disabled="!value('subcounty_id') || loading.parish" @change="chooseParish"><option value="">{{ loading.parish ? 'Loading…' : 'Select parish or ward' }}</option><option v-for="unit in parishes" :key="unit.id" :value="unit.id">{{ unit.name }} ({{ typeLabel(unit) }})</option></select>
-      </label>
+      <FloatingCombobox label="District / city" :model-value="value('district')" :options="unitOptions(districts)" required :disabled="loading.district" :placeholder="loading.district ? 'Loading districts…' : 'Search or select district / city'" @update:model-value="updateUnitQuery('district', $event)" @select="chooseDistrict(unitFromOption($event))" />
+      <FloatingCombobox label="County / municipality" :model-value="value('county')" :options="unitOptions(counties)" :disabled="!value('district_id') || loading.county" :placeholder="loading.county ? 'Loading counties…' : 'Search or select county / municipality'" @update:model-value="updateUnitQuery('county', $event)" @select="chooseCounty(unitFromOption($event))" />
+      <FloatingCombobox label="Sub-county / town / division" :model-value="value('subcounty')" :options="unitOptions(subcounties)" :disabled="!value('district_id') || loading.subcounty" :placeholder="loading.subcounty ? 'Loading sub-counties…' : 'Search or select sub-county / town / division'" @update:model-value="updateUnitQuery('subcounty', $event)" @select="chooseSubcounty(unitFromOption($event))" />
+      <FloatingCombobox label="Parish / ward" :model-value="value('parish')" :options="unitOptions(parishes)" :disabled="!value('subcounty_id') || loading.parish" :placeholder="loading.parish ? 'Loading parishes…' : 'Search or select parish / ward'" @update:model-value="updateUnitQuery('parish', $event)" @select="chooseParish(unitFromOption($event))" />
       <div class="wide village-combobox">
-        <label :for="villageControlId">Village / cell
-          <input
-            :id="villageControlId"
-            v-model="villageQuery"
-            type="search"
-            role="combobox"
-            autocomplete="off"
-            aria-autocomplete="list"
-            :aria-controls="villageResultsId"
-            :aria-expanded="villageResults.length > 0"
-            :aria-activedescendant="activeVillageIndex >= 0 ? `${villageResultsId}-option-${activeVillageIndex}` : undefined"
-            :placeholder="value('parish_id') ? 'Type or select a village / cell' : 'Type 2+ letters to search all Uganda'"
-            @focus="showVillageOptions"
-            @input="searchVillages"
-            @keydown.down.prevent="moveVillageResult(1)"
-            @keydown.up.prevent="moveVillageResult(-1)"
-            @keydown.enter.prevent="chooseActiveVillage"
-            @keydown.esc="villageResults = []"
-          />
-          <small>Type two or more letters to search nationally. Selecting a result fills every higher administrative unit.</small>
-        </label>
-        <div v-if="loading.search" class="address-search-status" role="status">Searching villages…</div>
-        <ul v-else-if="villageResults.length" :id="villageResultsId" class="address-search-results" role="listbox" aria-label="Village and cell options">
-          <li v-for="(unit, index) in villageResults" :key="unit.id"><button :id="`${villageResultsId}-option-${index}`" type="button" role="option" :aria-selected="activeVillageIndex === index" @mousedown.prevent @click="chooseSearchResult(unit)"><strong>{{ unit.name }}</strong><span>{{ typeLabel(unit) }} · {{ unit.full_address }}</span></button></li>
-        </ul>
+        <FloatingCombobox
+          :id="villageControlId"
+          label="Village / cell"
+          :model-value="villageQuery"
+          :load-options="loadVillageOptions"
+          :min-chars="value('parish_id') ? 0 : 2"
+          :max-visible="7"
+          :debounce-ms="300"
+          :placeholder="value('parish_id') ? 'Type or select a village / cell' : 'Type 2+ letters to search all Uganda'"
+          hint="Type two or more letters to search nationally. Selecting a result fills every higher administrative unit."
+          loading-text="Searching villages…"
+          no-results-text="No village or cell matches that search."
+          @update:model-value="updateVillageQuery"
+          @select="chooseSearchResult(unitFromOption($event))"
+        />
       </div>
     </div>
     <p v-if="value('full_address')" class="selected-address"><strong>Selected administrative address</strong><span>{{ value('full_address') }}</span><small v-if="value('subregion')">{{ value('subregion') }} subregion · {{ value('region') }} region</small></p>

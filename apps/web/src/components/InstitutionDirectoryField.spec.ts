@@ -76,7 +76,7 @@ describe('InstitutionDirectoryField', () => {
     await flushPromises()
 
     expect(screen.getAllByRole('option')).toHaveLength(7)
-    await fireEvent.mouseDown(screen.getByRole('option', { name: /Official Institution 2/ }))
+    await fireEvent.click(screen.getByRole('option', { name: /Official Institution 2/ }))
     expect(record.institution_id).toBe('institution-2')
     expect(record.institution).toBe('Official Institution 2')
     expect(record.institution_source).toBe('moes_emis')

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useId } from 'vue'
 import InstitutionDirectoryField from './InstitutionDirectoryField.vue'
+import FloatingCombobox, { type ComboboxOption } from './FloatingCombobox.vue'
 import {
   educationLevelFor,
   educationLevelGroups,
@@ -38,14 +39,46 @@ function removeRecord(index: number): void {
   records.value.splice(index, 1)
 }
 
-function changeLevel(record: EducationRecordDraft, event: Event): void {
-  record.level = (event.target as HTMLSelectElement).value
+function changeLevel(record: EducationRecordDraft, option: ComboboxOption): void {
+  record.level = option.value
   record.result = ''
   record.institution = ''
   record.institution_id = null
   record.institution_not_listed = false
   record.institution_source = undefined
   record.institution_registration_status = undefined
+}
+
+function levelOptions(record: EducationRecordDraft): ComboboxOption[] {
+  const options = educationLevelGroups.flatMap((group) => group.options.map((option) => ({
+    value: option.value,
+    label: option.value,
+    description: `${option.label} · ${group.label}`,
+  })))
+  if (record.level && !isKnownEducationLevel(record.level)) {
+    options.unshift({ value: record.level, label: record.level, description: 'Previously saved qualification level' })
+  }
+  return options
+}
+
+function resultOptions(record: EducationRecordDraft): ComboboxOption[] {
+  const options = resultOptionsForEducationLevel(record.level).map((option) => ({
+    value: option.value,
+    label: option.value,
+    description: option.label === option.value ? undefined : option.label,
+  }))
+  if (record.result && !isKnownEducationResult(record.level, record.result)) {
+    options.unshift({ value: record.result, label: record.result, description: 'Previously saved result' })
+  }
+  return options
+}
+
+function clearChangedLevel(record: EducationRecordDraft, query: string): void {
+  if (record.level && query !== record.level) changeLevel(record, { value: '', label: '' })
+}
+
+function clearChangedResult(record: EducationRecordDraft, query: string): void {
+  if (record.result && query !== record.result) record.result = ''
 }
 
 function guidanceFor(level: string): string {
@@ -69,27 +102,12 @@ function guidanceFor(level: string): string {
       <button type="button" class="text-button danger" :aria-label="`Remove qualification ${index + 1}`" @click="removeRecord(index)">Remove</button>
     </div>
     <div class="field-grid">
-      <label :for="`${formId}-level-${index}`">Level
-        <select :id="`${formId}-level-${index}`" :value="record.level" required @change="changeLevel(record, $event)">
-          <option value="">Select education level</option>
-          <option v-if="record.level && !isKnownEducationLevel(record.level)" :value="record.level">{{ record.level }} (previously saved)</option>
-          <optgroup v-for="group in educationLevelGroups" :key="group.label" :label="group.label">
-            <option v-for="option in group.options" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </optgroup>
-        </select>
-      </label>
+      <FloatingCombobox :id="`${formId}-level-${index}`" label="Level" :model-value="record.level" :options="levelOptions(record)" required placeholder="Search or select education level" @update:model-value="clearChangedLevel(record, $event)" @select="changeLevel(record, $event)" />
       <InstitutionDirectoryField v-model="records[index]" />
       <label :for="`${formId}-year-${index}`">Completion year
         <input :id="`${formId}-year-${index}`" v-model="record.completion_year" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="YYYY" />
       </label>
-      <label :for="`${formId}-result-${index}`">Result / class
-        <select :id="`${formId}-result-${index}`" v-model="record.result" required :disabled="!record.level">
-          <option value="">{{ record.level ? 'Select result or class' : 'Select a level first' }}</option>
-          <option v-if="record.result && !isKnownEducationResult(record.level, record.result)" :value="record.result">{{ record.result }} (previously saved)</option>
-          <option v-for="option in resultOptionsForEducationLevel(record.level)" :key="option.value" :value="option.value">{{ option.label }}</option>
-        </select>
-        <small class="field-help">{{ guidanceFor(record.level) }}</small>
-      </label>
+      <FloatingCombobox :id="`${formId}-result-${index}`" label="Result / class" :model-value="record.result" :options="resultOptions(record)" required :disabled="!record.level" :placeholder="record.level ? 'Search or select result / class' : 'Select a level first'" :hint="guidanceFor(record.level)" @update:model-value="clearChangedResult(record, $event)" @select="record.result = $event.value" />
     </div>
   </article>
 

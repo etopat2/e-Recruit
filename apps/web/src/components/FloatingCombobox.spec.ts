@@ -15,6 +15,15 @@ const options: ComboboxOption[] = [
 ]
 
 describe('FloatingCombobox', () => {
+  it('keeps all choices available while limiting the visible panel to seven rows', async () => {
+    const manyOptions = Array.from({ length: 9 }, (_, index) => ({ value: String(index), label: `Option ${index + 1}` }))
+    render(FloatingCombobox, { props: { label: 'Long list', options: manyOptions, maxVisible: 7 } })
+    await fireEvent.focus(screen.getByRole('combobox', { name: 'Long list' }))
+
+    expect(screen.getAllByRole('option')).toHaveLength(9)
+    await waitFor(() => expect(screen.getByRole('listbox')).toHaveStyle({ maxHeight: '428px' }))
+  })
+
   it('uses an ARIA listbox and supports keyboard selection', async () => {
     const rendered = render(FloatingCombobox, {
       props: { label: 'Region', options, modelValue: '' },

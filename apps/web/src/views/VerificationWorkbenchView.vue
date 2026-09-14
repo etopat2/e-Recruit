@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { api, authToken, jsonBody } from '../lib/api'
 
@@ -20,6 +21,8 @@ const notice = ref('')
 const comparing = ref(false)
 const decision = reactive({ action: 'verify', outcome: 'VERIFIED/CONSISTENT', verified_value: '', reason: '' })
 const fieldKeys = computed(() => Object.keys(workbench.value?.evidence_matrix || {}))
+const fieldOptions = computed<ComboboxOption[]>(() => fieldKeys.value.map((key) => ({ value: key, label: key.replaceAll('_', ' ') })))
+const selectedFieldLabel = computed(() => fieldOptions.value.find((option) => option.value === selectedField.value)?.label || selectedField.value)
 
 onMounted(load)
 
@@ -59,6 +62,11 @@ function focusSource(source: EvidenceSource) {
   selectedDocument.value = source.source_id
 }
 
+function selectField(option: ComboboxOption): void {
+  selectedField.value = option.value
+  selectedSource.value = null
+}
+
 function previewUrl(document: WorkbenchDocument): string {
   const url = previews.value[document.id] || ''
   const page = selectedSource.value?.source_id === document.id ? selectedSource.value.page : undefined
@@ -91,7 +99,7 @@ function markerStyle(document: WorkbenchDocument): Record<string, string> | unde
       </article>
     </div>
     <div class="evidence-panel">
-      <div class="section-heading"><div><p class="eyebrow">Evidence matrix</p><h2>Field-by-field comparison</h2></div><select v-model="selectedField" aria-label="Field to verify" @change="selectedSource = null"><option v-for="key in fieldKeys" :key="key">{{ key }}</option></select></div>
+      <div class="section-heading"><div><p class="eyebrow">Evidence matrix</p><h2>Field-by-field comparison</h2></div><FloatingCombobox label="Field to verify" :model-value="selectedFieldLabel" :options="fieldOptions" placeholder="Search evidence fields" @update:model-value="selectedField = ''" @select="selectField" /></div>
       <table class="evidence-table"><thead><tr><th>Source</th><th>Value</th><th>Confidence</th></tr></thead><tbody><tr><td>Applicant entry</td><td>{{ workbench.application.entered_data }}</td><td>Declared</td></tr><tr v-for="source in workbench.evidence_matrix[selectedField]" :key="String(source.source_id)" :class="{ 'focused-source': selectedSource === source }"><td>{{ source.source_id }}<small v-if="source.page">Page {{ source.page }}</small></td><td><button class="evidence-source" type="button" @click="focusSource(source)">{{ source.value || 'Not available' }}<span>Focus original source</span></button></td><td>{{ source.confidence ? `${Math.round(Number(source.confidence) * 100)}%` : '—' }}</td></tr></tbody></table>
       <div class="decision-panel"><h3>Record an accountable decision</h3><div class="field-grid"><label>Action<select v-model="decision.action"><option value="verify">Verify</option><option value="correct">Correct OCR/value</option><option value="flag_discrepancy">Flag discrepancy</option><option value="mark_ocr_incorrect">Mark OCR incorrect</option><option value="request_replacement">Request replacement</option><option value="mark_unreadable">Mark unreadable</option><option value="mark_not_present">Mark not present</option></select></label><label>Outcome<select v-model="decision.outcome"><option>VERIFIED/CONSISTENT</option><option>PROBABLE MATCH</option><option>DISCREPANCY</option><option>UNREADABLE/LOW CONFIDENCE</option><option>NOT AVAILABLE</option></select></label><label class="wide">Verified/corrected value<input v-model="decision.verified_value" /></label><label class="wide">Reason<textarea v-model="decision.reason" placeholder="Required for discrepancies and corrections" /></label></div><button class="button primary" @click="record">Record versioned decision</button></div>
     </div>
