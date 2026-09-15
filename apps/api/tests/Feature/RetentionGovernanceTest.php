@@ -76,6 +76,21 @@ class RetentionGovernanceTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('record_category');
     }
 
+    public function test_legal_hold_targets_are_searchable_human_references_and_role_protected(): void
+    {
+        $notificationId = $this->notification('searchable', now()->subDay());
+        Sanctum::actingAs($this->privilegedUser('prisons_council_secretariat'));
+
+        $this->getJson('/api/v1/governance/legal-hold-targets?entity_type=notifications&search=synthetic')
+            ->assertOk()
+            ->assertJsonPath('options.0.value', $notificationId)
+            ->assertJsonPath('options.0.label', 'Synthetic Retention')
+            ->assertJsonMissingPath('options.0.id');
+
+        Sanctum::actingAs(User::factory()->create(['user_type' => 'helpdesk_officer']));
+        $this->getJson('/api/v1/governance/legal-hold-targets?entity_type=notifications')->assertForbidden();
+    }
+
     private function privilegedUser(string $userType): User
     {
         return User::factory()->create([

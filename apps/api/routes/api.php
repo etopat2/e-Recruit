@@ -102,6 +102,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
 
             Route::prefix('admin')->middleware('role:system_administrator')->group(function (): void {
                 Route::get('roles', [TechnicalUserController::class, 'roles'])->name('admin.roles.index');
+                Route::get('scope-options', [TechnicalUserController::class, 'scopeOptions'])->name('admin.scope-options.index');
                 Route::get('users', [TechnicalUserController::class, 'index'])->name('admin.users.index');
                 Route::post('users', [TechnicalUserController::class, 'store'])->name('admin.users.store');
                 Route::put('users/{user}', [TechnicalUserController::class, 'update'])->name('admin.users.update');
@@ -141,6 +142,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('score-adjustments/{adjustment}/decision', [AssessmentController::class, 'decideAdjustment'])->name('assessments.adjustments.decision');
 
             Route::post('offline/devices', [OfflineSyncController::class, 'registerDevice'])->name('offline.devices.store');
+            Route::get('offline/reference-options', [OfflineSyncController::class, 'referenceOptions'])->name('offline.reference-options.index');
             Route::post('offline/devices/{device}/revoke', [OfflineSyncController::class, 'revokeDevice'])->name('offline.devices.revoke');
             Route::post('offline/packages', [OfflineSyncController::class, 'issue'])->name('offline.packages.store');
             Route::get('offline/packages/{offlinePackage}', [OfflineSyncController::class, 'show'])->name('offline.packages.show');
@@ -151,6 +153,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::get('operations/offline', [OfflineSyncController::class, 'operations'])->name('operations.offline');
 
             Route::post('rankings', [SelectionController::class, 'rank'])->name('rankings.store');
+            Route::get('selection/lookups', [SelectionController::class, 'lookups'])->name('selection.lookups.index');
             Route::get('selection-runs', [SelectionController::class, 'index'])->name('selection.index');
             Route::post('selection-runs', [SelectionController::class, 'store'])->name('selection.store');
             Route::get('selection-runs/{selectionRun}', [SelectionController::class, 'show'])->name('selection.show');
@@ -181,6 +184,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('integrity-flags/{flag}/review', [AuditController::class, 'reviewFlag'])->name('integrity-flags.review');
 
             Route::get('governance/retention', [GovernanceController::class, 'index'])->name('governance.retention.index');
+            Route::get('governance/legal-hold-targets', [GovernanceController::class, 'holdTargets'])->name('governance.legal-hold-targets.index');
             Route::post('governance/retention/policies', [GovernanceController::class, 'storePolicy'])->name('governance.retention.policies.store');
             Route::post('governance/legal-holds', [GovernanceController::class, 'placeHold'])->name('governance.legal-holds.store');
             Route::post('governance/legal-holds/{legalHold}/release', [GovernanceController::class, 'releaseHold'])->name('governance.legal-holds.release');

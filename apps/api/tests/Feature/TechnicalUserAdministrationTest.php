@@ -259,6 +259,20 @@ class TechnicalUserAdministrationTest extends TestCase
         ])->assertUnprocessable();
     }
 
+    public function test_scope_editor_uses_human_reference_directories_instead_of_free_form_identifiers(): void
+    {
+        $administrator = $this->technicalAdministrator();
+        $fixture = $this->recruitmentFixture();
+        Sanctum::actingAs($administrator, ['*']);
+
+        $this->getJson('/api/v1/admin/scope-options')
+            ->assertOk()
+            ->assertJsonPath('data.references.campaign.0.value', $fixture['campaign']->id)
+            ->assertJsonPath('data.references.campaign.0.label', $fixture['campaign']->name)
+            ->assertJsonFragment(['label' => 'Record verification decisions'])
+            ->assertJsonMissingPath('data.references.campaign.0.id');
+    }
+
     public function test_password_and_mfa_resets_are_audited_and_revoke_tokens(): void
     {
         $administrator = $this->technicalAdministrator();

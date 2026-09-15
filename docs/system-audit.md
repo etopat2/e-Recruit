@@ -302,3 +302,11 @@ Backend regression coverage proves that a district is never split and that a syn
 ### Operations form audit result
 
 All eleven actions on the Operations page now use the shared dialog, floating combobox, validation alert and toast primitives. Application, post, region, office, assignment, panel, schedule, selection, medical, training and replacement relationships are chosen using human-readable, scoped registers; the underlying IDs are silent submitted values. Hard-copy documents are checkboxes, training instructions are repeatable fields, and bounded statuses are select/combobox controls. No JSON textarea or raw-ID/hash paste field remains on either the Operations or Verification page, and neither page renders a raw internal ID as user-facing text.
+
+### App-wide human-reference remediation
+
+The same control rule was applied beyond Operations and Verification. Written-score imports now select a named centre session; campaign eligibility and selection configuration use bounded numeric/select controls; selection policies use searchable ranking runs plus repeatable quota, skill-reservation and tie-break rows; helpdesk requests select named campaigns and applicant-facing application references; and technical administrators assign scopes through named jurisdictions/workflows with task checkboxes.
+
+Governance legal holds now select a bounded record category and search a permission-checked human record directory. Purge evidence remains stored and auditable, but its raw hash is not rendered. Offline provisioning now searches only role- and scope-authorised records, builds medical scope through a named schedule, and keeps device, package, event and entity identifiers hidden. Hard-copy checks are checklist rows, verification evidence is linked automatically, server snapshots are structured summaries, and conflicts show labelled records and formatted values rather than serialized objects.
+
+New supporting endpoints are `GET /api/v1/admin/scope-options`, `GET /api/v1/selection/lookups`, `GET /api/v1/governance/legal-hold-targets`, and `GET /api/v1/offline/reference-options`. Each retains identifiers only as silent submitted values. Source scans and desktop/mobile browser coverage enforce that no free-form JSON editor or user-facing internal identifier remains in these workflows.

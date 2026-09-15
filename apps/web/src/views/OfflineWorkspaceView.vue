@@ -12,6 +12,8 @@ interface PackRecord { entity_type: string; entity_id: string; server_version: n
 interface PackInfo { id: string; pack_type: PackType; manifest_fingerprint: string; expires_at: string; status: string; manifest: Record<string, unknown> }
 interface Conflict { id: string; entity_id: string; field_key: string; status: string; local_value: unknown; server_value: unknown }
 interface PackPayload { package: PackInfo; server_records: PackRecord[]; server_time: string; conflicts?: Conflict[] }
+interface ReferenceOption extends ComboboxOption { data?: { recruitment_post_id?: string } }
+interface HardCopyItem { document_type: string; label: string; status: string; notes: string }
 
 const definitions: Record<PackType, { label: string; action: string; entityType: string }> = {
   score_capture: { label: 'Assessment scoring', action: 'ASSESSMENT_SCORE_RECORDED', entityType: 'assessment_score' },
@@ -33,29 +35,52 @@ const online = ref(window.navigator.onLine)
 const lastSync = ref(localStorage.getItem('ups_last_sync') || '')
 const unlock = reactive({ configured: false, unlocked: false, pin: '', confirmation: '' })
 const conflictReason = ref('')
-const provision = reactive({ packType: 'score_capture' as PackType, entityIds: '', scopeJson: '{}' })
+const provision = reactive({ packType: 'score_capture' as PackType, search: '', selected: [] as ReferenceOption[], medicalScheduleId: '', medicalScheduleLabel: '' })
+const medicalSchedules = ref<ReferenceOption[]>([])
+const hardCopyItems = ref<HardCopyItem[]>([])
 const capture = reactive({
   entityId: '', score: 0, notes: '', attendanceStatus: 'present', receivingOffice: '', receivedAt: new Date().toISOString().slice(0, 16),
-  hardCopyItems: '[{"document_type":"national_id","status":"Match"}]', fieldKey: '', verificationAction: 'verify', verificationOutcome: 'VERIFIED/CONSISTENT',
-  verifiedValue: '', evidenceReferences: '[]', medicalOutcome: 'Fit', clinicalReference: '', confirmation: false,
+  fieldKey: '', verificationAction: 'verify', verificationOutcome: 'VERIFIED/CONSISTENT', verifiedValue: '', medicalOutcome: 'Fit', clinicalReference: '', confirmation: false,
 })
 const activeEvents = computed(() => events.value.filter((event) => event.packageId === packageId.value))
 const selectedRecord = computed(() => packPayload.value?.server_records.find((record) => record.entity_id === capture.entityId))
 const packRecordOptions = computed<ComboboxOption[]>(() => (packPayload.value?.server_records || []).map((record) => ({
   value: record.entity_id,
-  label: String(record.payload.application_reference || record.payload.panel_code || record.entity_id),
-  description: `Version ${record.server_version} · ${record.entity_type}`,
+  label: [record.payload.candidate_name, record.payload.application_reference].filter(Boolean).join(' · ') || String(record.payload.panel_code || 'Scoped field record'),
+  description: `${humanize(record.entity_type)} · server version ${record.server_version}`,
 })))
 const selectedRecordName = computed(() => packRecordOptions.value.find((option) => option.value === capture.entityId)?.label || '')
 const definition = computed(() => definitions[packPayload.value?.package.pack_type || provision.packType])
+const selectedProvisionPost = computed(() => provision.selected[0]?.data?.recruitment_post_id || '')
+const medicalScheduleOptions = computed(() => medicalSchedules.value.filter((option) => !selectedProvisionPost.value || option.data?.recruitment_post_id === selectedProvisionPost.value))
+const extractedFieldOptions = computed<ComboboxOption[]>(() => {
+  const fields = Array.isArray(selectedRecord.value?.payload.extracted_fields) ? selectedRecord.value?.payload.extracted_fields as Array<Record<string, unknown>> : []
+  return fields.map((field) => ({ value: String(field.field_key), label: humanize(String(field.field_key)), description: String(field.normalised_value || field.raw_value || 'No extracted value') }))
+})
+const snapshotRows = computed(() => selectedRecord.value ? structuredRows(selectedRecord.value.payload) : [])
+const captureReady = computed(() => {
+  if (!packageId.value || !selectedRecord.value) return false
+  if (definition.value.action === 'HARDCOPY_RECEIPT_RECORDED') return Boolean(capture.receivingOffice.trim() && capture.receivedAt && hardCopyItems.value.length)
+  if (definition.value.action === 'DOCUMENT_VERIFICATION_RECORDED') return Boolean(capture.fieldKey && (!['verify', 'correct'].includes(capture.verificationAction) || capture.verifiedValue !== '') && (capture.verificationAction === 'verify' || capture.notes.trim()))
+  if (definition.value.action === 'PANEL_CLOSED') return capture.confirmation
+  return true
+})
 const subscription = liveQuery(() => offlineDb.events.orderBy('local_sequence').toArray()).subscribe((items) => { events.value = items })
 const updateOnline = () => { online.value = window.navigator.onLine }
 let inactivityTimer: number | undefined
 const activityEvents = ['pointerdown', 'keydown', 'touchstart'] as const
 
-watch(() => provision.packType, (packType) => { provision.scopeJson = packType === 'medical' ? '{"medical_schedule_id":""}' : '{}' })
+watch(() => provision.packType, () => {
+  provision.search = ''; provision.selected = []; provision.medicalScheduleId = ''; provision.medicalScheduleLabel = ''; medicalSchedules.value = []
+})
 watch(packPayload, (payload) => {
   if (payload?.server_records.length && !payload.server_records.some((record) => record.entity_id === capture.entityId)) capture.entityId = payload.server_records[0].entity_id
+})
+watch(selectedRecord, (record) => {
+  const requirements = Array.isArray(record?.payload.document_requirements) ? record.payload.document_requirements as Array<Record<string, unknown>> : []
+  hardCopyItems.value = requirements.map((item) => ({ document_type: String(item.document_type), label: String(item.label || humanize(String(item.document_type))), status: 'Match', notes: '' }))
+  const fields = Array.isArray(record?.payload.extracted_fields) ? record.payload.extracted_fields as Array<Record<string, unknown>> : []
+  capture.fieldKey = fields.length ? String(fields[0].field_key) : ''
 })
 
 onBeforeUnmount(() => {
@@ -115,6 +140,64 @@ function resetInactivity() {
 
 function resetMessages() { notice.value = ''; error.value = '' }
 
+function humanize(value: string): string {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function structuredRows(payload: Record<string, unknown>): Array<{ label: string; value: string }> {
+  const hidden = /(^|_)(id|hash|fingerprint|path|endpoint)$/
+  return Object.entries(payload).filter(([key]) => !hidden.test(key)).flatMap(([key, value]) => {
+    if (value === null || value === undefined || value === '') return []
+    if (key === 'document_requirements') return [{ label: 'Required documents', value: `${Array.isArray(value) ? value.length : 0} checklist item(s)` }]
+    if (key === 'extracted_fields') return [{ label: 'Extracted fields', value: `${Array.isArray(value) ? value.length : 0} review field(s)` }]
+    if (key === 'candidate' && typeof value === 'object' && !Array.isArray(value)) {
+      const candidate = value as Record<string, unknown>
+      return [{ label: 'Candidate', value: [candidate.first_name, candidate.last_name].filter(Boolean).join(' ') }, { label: 'Date of birth', value: String(candidate.date_of_birth || '') }, { label: 'Sex', value: String(candidate.sex || '') }]
+    }
+    if (Array.isArray(value)) return [{ label: humanize(key), value: `${value.length} item(s)` }]
+    if (typeof value === 'object') return []
+    return [{ label: humanize(key), value: String(value) }]
+  })
+}
+
+function formatStructuredValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Not recorded'
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const useful = Object.entries(record).filter(([key]) => !/(^|_)(id|hash|fingerprint)$/.test(key))
+    return useful.map(([key, item]) => `${humanize(key)}: ${String(item ?? 'not recorded')}`).join('; ') || 'Protected structured value'
+  }
+  return String(value)
+}
+
+async function loadReferenceOptions(query: string, signal: AbortSignal): Promise<ComboboxOption[]> {
+  const response = await api<{ options: ReferenceOption[]; medical_schedules: ReferenceOption[] }>(`/offline/reference-options?pack_type=${provision.packType}&search=${encodeURIComponent(query)}`, { signal, cacheTtlMs: 0 })
+  medicalSchedules.value = response.medical_schedules
+  return response.options.filter((option) => !provision.selected.some((selected) => selected.value === option.value))
+}
+
+function chooseProvisionRecord(option: ComboboxOption): void {
+  if (!provision.selected.some((selected) => selected.value === option.value)) provision.selected.push(option as ReferenceOption)
+  provision.search = ''
+  if (provision.packType === 'medical') { provision.medicalScheduleId = ''; provision.medicalScheduleLabel = '' }
+}
+
+function removeProvisionRecord(value: string): void {
+  provision.selected = provision.selected.filter((option) => option.value !== value)
+}
+
+function chooseMedicalSchedule(option: ComboboxOption): void {
+  provision.medicalScheduleId = option.value; provision.medicalScheduleLabel = option.label
+}
+
+function eventRecordLabel(event: OfflineEvent): string {
+  return packRecordOptions.value.find((option) => option.value === event.entity_id)?.label || 'Scoped field record'
+}
+
+function conflictRecordLabel(item: Conflict): string {
+  return packRecordOptions.value.find((option) => option.value === item.entity_id)?.label || 'Scoped field record'
+}
+
 async function register() {
   resetMessages()
   try {
@@ -127,9 +210,10 @@ async function register() {
 async function issue() {
   resetMessages()
   try {
-    const ids = provision.entityIds.split(',').map((item) => item.trim()).filter(Boolean)
-    const scope = JSON.parse(provision.scopeJson) as Record<string, unknown>
-    if (!ids.length) throw new Error('Provide at least one entity ID for this controlled pack.')
+    const ids = provision.selected.map((item) => item.value)
+    const scope = provision.packType === 'medical' ? { medical_schedule_id: provision.medicalScheduleId } : {}
+    if (!ids.length) throw new Error('Select at least one authorised record for this controlled pack.')
+    if (provision.packType === 'medical' && !provision.medicalScheduleId) throw new Error('Select the medical schedule for this pack.')
     const selected = definitions[provision.packType]
     const response = await api<PackPayload>('/offline/packages', { method: 'POST', ...jsonBody({ registered_device_id: deviceRecordId.value, pack_type: provision.packType, scope, permitted_actions: [selected.action], entity_ids: ids, expiry_hours: 24 }) })
     packageId.value = response.package.id; packPayload.value = response; conflicts.value = []
@@ -143,8 +227,8 @@ function eventPayload(): Record<string, unknown> {
   switch (definition.value.action) {
     case 'ASSESSMENT_SCORE_RECORDED': return { score: capture.score, notes: capture.notes || undefined }
     case 'ATTENDANCE_RECORDED': return { status: capture.attendanceStatus, notes: capture.notes || undefined }
-    case 'HARDCOPY_RECEIPT_RECORDED': return { receiving_office: capture.receivingOffice, received_at: new Date(capture.receivedAt).toISOString(), notes: capture.notes || undefined, items: JSON.parse(capture.hardCopyItems) }
-    case 'DOCUMENT_VERIFICATION_RECORDED': return { field_key: capture.fieldKey, action: capture.verificationAction, outcome: capture.verificationOutcome, verified_value: capture.verifiedValue, evidence_references: JSON.parse(capture.evidenceReferences), reason: capture.notes || undefined }
+    case 'HARDCOPY_RECEIPT_RECORDED': return { receiving_office: capture.receivingOffice, received_at: new Date(capture.receivedAt).toISOString(), notes: capture.notes || undefined, items: hardCopyItems.value.map(({ document_type, status, notes }) => ({ document_type, status, notes: notes || undefined })) }
+    case 'DOCUMENT_VERIFICATION_RECORDED': return { field_key: capture.fieldKey, action: capture.verificationAction, outcome: capture.verificationOutcome, verified_value: capture.verifiedValue, evidence_references: [capture.entityId], reason: capture.notes || undefined }
     case 'MEDICAL_RESULT_RECORDED': return { outcome: capture.medicalOutcome, restricted_notes: capture.notes || undefined, clinical_reference: capture.clinicalReference || undefined }
     default: return { confirmation: capture.confirmation }
   }
@@ -257,16 +341,17 @@ async function purgePack(message: string) {
       <article class="form-panel">
         <h2>1. Bind and provision</h2>
         <p><StatusBadge :status="online ? 'online' : 'offline'" /> {{ online ? 'Online' : 'Offline' }} · Last successful sync {{ lastSync ? new Date(lastSync).toLocaleString() : 'not yet completed' }}</p>
-        <label>Device UUID<input v-model="deviceId" readonly /></label>
+        <p class="notice"><strong>Browser field device</strong><br />A protected device identity is ready and remains hidden from operators.</p>
         <button v-if="!deviceRecordId" class="button secondary" @click="register">Register this device</button>
         <template v-else-if="!packageId">
           <label>Pack purpose<select v-model="provision.packType"><option v-for="(item, key) in definitions" :key="key" :value="key">{{ item.label }}</option></select></label>
-          <label>Scoped entity IDs<textarea v-model="provision.entityIds" placeholder="One or more IDs, comma-separated" /></label>
-          <label>Scope (JSON)<textarea v-model="provision.scopeJson" rows="3" /></label>
-          <button class="button secondary" :disabled="!online" @click="issue">Issue scoped pack</button>
+          <FloatingCombobox label="Records to include" :model-value="provision.search" :load-options="loadReferenceOptions" placeholder="Search by candidate, application reference, panel, or document" @update:model-value="provision.search = $event" @select="chooseProvisionRecord" />
+          <div v-if="provision.selected.length" class="notice"><strong>Selected records</strong><ul><li v-for="option in provision.selected" :key="option.value"><span>{{ option.label }}</span> <button type="button" class="text-button danger" @click="removeProvisionRecord(option.value)">Remove</button></li></ul></div>
+          <FloatingCombobox v-if="provision.packType === 'medical'" label="Medical schedule" :model-value="provision.medicalScheduleLabel" :options="medicalScheduleOptions" required placeholder="Select the matching facility and date" @update:model-value="provision.medicalScheduleId = ''; provision.medicalScheduleLabel = $event" @select="chooseMedicalSchedule" />
+          <button class="button secondary" :disabled="!online || !provision.selected.length || (provision.packType === 'medical' && !provision.medicalScheduleId)" @click="issue">Issue scoped pack</button>
         </template>
         <template v-else>
-          <p class="mono-note">Pack {{ packageId }}</p>
+          <p class="mono-note">Active encrypted field pack</p>
           <p><StatusBadge :status="packPayload?.package.status || 'active'" /> {{ definition.label }} · {{ packPayload?.server_records.length || 0 }} record(s)</p>
           <p>Expires {{ new Date(packPayload?.package.expires_at || '').toLocaleString() }}</p>
           <div class="button-row"><button class="button secondary compact" :disabled="!online" @click="pullChanges">Pull changes</button><button class="button danger compact" :disabled="!online" @click="revokePack">Revoke pack</button></div>
@@ -276,21 +361,21 @@ async function purgePack(message: string) {
       <article class="form-panel">
         <h2>2. Capture {{ definition.label.toLowerCase() }}</h2>
         <FloatingCombobox label="Pack record" :model-value="selectedRecordName" :options="packRecordOptions" :disabled="!packageId" placeholder="Search or select scoped record" @update:model-value="capture.entityId = ''" @select="capture.entityId = $event.value" />
-        <div v-if="definition.action === 'ASSESSMENT_SCORE_RECORDED'" class="field-grid"><label>Score<input v-model="capture.score" type="number" min="0" /></label><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
+        <div v-if="definition.action === 'ASSESSMENT_SCORE_RECORDED'" class="field-grid"><label>Score<input v-model="capture.score" type="number" min="0" :max="Number(selectedRecord?.payload.maximum_mark || 100)" /></label><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'ATTENDANCE_RECORDED'" class="field-grid"><label>Status<select v-model="capture.attendanceStatus"><option v-for="status in ['present','late','absent','referred','disqualified','excused','no_show']" :key="status">{{ status }}</option></select></label><label class="wide">Exception notes<textarea v-model="capture.notes" /></label></div>
-        <div v-else-if="definition.action === 'HARDCOPY_RECEIPT_RECORDED'" class="field-grid"><label>Receiving office<input v-model="capture.receivingOffice" /></label><label>Received at<input v-model="capture.receivedAt" type="datetime-local" /></label><label class="wide">Document checks (JSON)<textarea v-model="capture.hardCopyItems" rows="5" /></label><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
-        <div v-else-if="definition.action === 'DOCUMENT_VERIFICATION_RECORDED'" class="field-grid"><label>Field key<input v-model="capture.fieldKey" /></label><label>Action<select v-model="capture.verificationAction"><option v-for="action in ['verify','flag_discrepancy','correct','mark_ocr_incorrect','request_replacement','mark_unreadable','mark_not_present']" :key="action">{{ action }}</option></select></label><label>Outcome<select v-model="capture.verificationOutcome"><option v-for="outcome in ['VERIFIED/CONSISTENT','PROBABLE MATCH','DISCREPANCY','UNREADABLE/LOW CONFIDENCE','NOT AVAILABLE']" :key="outcome">{{ outcome }}</option></select></label><label>Verified value<input v-model="capture.verifiedValue" /></label><label class="wide">Evidence references (JSON)<textarea v-model="capture.evidenceReferences" /></label><label class="wide">Reason<textarea v-model="capture.notes" /></label></div>
+        <div v-else-if="definition.action === 'HARDCOPY_RECEIPT_RECORDED'" class="field-grid"><label>Receiving office<input v-model="capture.receivingOffice" /></label><label>Received at<input v-model="capture.receivedAt" type="datetime-local" /></label><div class="wide table-wrap"><table><thead><tr><th>Required document</th><th>Check result</th><th>Notes</th></tr></thead><tbody><tr v-for="item in hardCopyItems" :key="item.document_type"><td>{{ item.label }}</td><td><select v-model="item.status"><option v-for="status in ['Match','Different Document','Missing','Unreadable','Original Required at Interview']" :key="status">{{ status }}</option></select></td><td><input v-model="item.notes" :aria-label="`${item.label} notes`" /></td></tr><tr v-if="!hardCopyItems.length"><td colspan="3">No hard-copy requirements are configured for this post.</td></tr></tbody></table></div><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
+        <div v-else-if="definition.action === 'DOCUMENT_VERIFICATION_RECORDED'" class="field-grid"><label>Field<select v-model="capture.fieldKey"><option v-for="field in extractedFieldOptions" :key="field.value" :value="field.value">{{ field.label }} — {{ field.description }}</option></select></label><label>Action<select v-model="capture.verificationAction"><option v-for="action in ['verify','flag_discrepancy','correct','mark_ocr_incorrect','request_replacement','mark_unreadable','mark_not_present']" :key="action" :value="action">{{ humanize(action) }}</option></select></label><label>Outcome<select v-model="capture.verificationOutcome"><option v-for="outcome in ['VERIFIED/CONSISTENT','PROBABLE MATCH','DISCREPANCY','UNREADABLE/LOW CONFIDENCE','NOT AVAILABLE']" :key="outcome">{{ outcome }}</option></select></label><label>Verified value<input v-model="capture.verifiedValue" /></label><p class="wide notice">The selected document is attached automatically as the evidence reference.</p><label class="wide">Reason<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'MEDICAL_RESULT_RECORDED'" class="field-grid"><label>Outcome<select v-model="capture.medicalOutcome"><option v-for="outcome in ['Fit','Not Fit','Deferred','Further Assessment Required','No Show']" :key="outcome">{{ outcome }}</option></select></label><label>Clinical reference<input v-model="capture.clinicalReference" /></label><label class="wide">Restricted notes<textarea v-model="capture.notes" /></label></div>
         <label v-else class="checkbox"><input v-model="capture.confirmation" type="checkbox" /> <span>I confirm all panel assessment data is complete and ready to be made immutable.</span></label>
-        <div v-if="selectedRecord" class="notice"><strong>Server snapshot v{{ selectedRecord.server_version }}</strong><pre>{{ JSON.stringify(selectedRecord.payload, null, 2) }}</pre></div>
-        <button class="button primary" :disabled="!packageId" @click="queueEvent">Queue encrypted event</button>
+        <div v-if="selectedRecord" class="notice"><strong>Current server record · version {{ selectedRecord.server_version }}</strong><div class="table-wrap"><table><tbody><tr v-for="row in snapshotRows" :key="row.label"><th>{{ row.label }}</th><td>{{ row.value }}</td></tr></tbody></table></div></div>
+        <button class="button primary" :disabled="!captureReady" @click="queueEvent">Queue encrypted event</button>
       </article>
     </section>
 
     <section class="content-section compact-top">
       <div class="section-heading"><div><h2>Event outbox</h2><p>{{ activeEvents.filter((event) => event.state === 'pending').length }} awaiting acknowledgement · {{ activeEvents.filter((event) => event.state === 'rejected').length }} rejected · {{ conflicts.filter((item) => item.status === 'open').length }} open conflict(s)</p></div><div><label class="checkbox compact"><input v-model="completePack" type="checkbox" /> <span>Final sync: reconcile and purge</span></label><button class="button primary" :disabled="syncBusy || !online || !activeEvents.some((event) => event.state === 'pending')" @click="sync">{{ syncBusy ? 'Synchronising…' : 'Synchronise now' }}</button></div></div>
-      <div class="table-wrap"><table><thead><tr><th>Sequence</th><th>Event UUID</th><th>Action</th><th>Entity</th><th>State</th></tr></thead><tbody><tr v-for="event in activeEvents" :key="event.id"><td>{{ event.local_sequence }}</td><td><code>{{ event.id }}</code></td><td>{{ event.action_type }}</td><td>{{ event.entity_id }}</td><td><StatusBadge :status="event.state" /><small v-if="event.error">{{ event.error }}</small></td></tr><tr v-if="!activeEvents.length"><td colspan="5">No local events for this pack.</td></tr></tbody></table></div>
-      <div v-if="conflicts.length" class="notice"><strong>Supervisor resolution required</strong><label>Resolution reason<textarea v-model="conflictReason" minlength="10" placeholder="Document the evidence and authority for this decision." /></label><article v-for="item in conflicts" :key="item.id"><p>{{ item.field_key }} on {{ item.entity_id }}: local {{ JSON.stringify(item.local_value) }}, server {{ JSON.stringify(item.server_value) }}</p><div class="button-row"><button class="button secondary compact" :disabled="!online" @click="resolveConflict(item, 'keep_server')">Keep server value</button><button class="button compact" :disabled="!online" @click="resolveConflict(item, 'accept_local')">Accept reviewed local value</button></div></article></div>
+      <div class="table-wrap"><table><thead><tr><th>Sequence</th><th>Action</th><th>Record</th><th>State</th></tr></thead><tbody><tr v-for="event in activeEvents" :key="event.id"><td>{{ event.local_sequence }}</td><td>{{ humanize(event.action_type) }}</td><td>{{ eventRecordLabel(event) }}</td><td><StatusBadge :status="event.state" /><small v-if="event.error">{{ event.error }}</small></td></tr><tr v-if="!activeEvents.length"><td colspan="4">No local events for this pack.</td></tr></tbody></table></div>
+      <div v-if="conflicts.length" class="notice"><strong>Supervisor resolution required</strong><label>Resolution reason<textarea v-model="conflictReason" minlength="10" placeholder="Document the evidence and authority for this decision." /></label><article v-for="item in conflicts" :key="item.id"><p><strong>{{ conflictRecordLabel(item) }} · {{ humanize(item.field_key) }}</strong><br />Local value: {{ formatStructuredValue(item.local_value) }}<br />Server value: {{ formatStructuredValue(item.server_value) }}</p><div class="button-row"><button class="button secondary compact" :disabled="!online" @click="resolveConflict(item, 'keep_server')">Keep server value</button><button class="button compact" :disabled="!online" @click="resolveConflict(item, 'accept_local')">Accept reviewed local value</button></div></article></div>
     </section>
   </template>
 </template>

@@ -18,7 +18,7 @@ class OfflineExtendedWorkflowTest extends TestCase
 
     public function test_hard_copy_pack_is_self_identifying_idempotent_and_revocable(): void
     {
-        $fixture = $this->recruitmentFixture(['status' => 'awaiting_hard_copies']);
+        $fixture = $this->recruitmentFixture(['status' => 'awaiting_hard_copies', 'reference' => 'UPS/TEST/000001']);
         $officer = User::factory()->create(['user_type' => 'hard_copy_receiving_officer']);
         $officer->scopes()->create(['scope_type' => 'campaign', 'scope_id' => $fixture['campaign']->id, 'allowed_tasks' => ['*']]);
         $deviceId = $this->device($officer);
@@ -70,6 +70,26 @@ class OfflineExtendedWorkflowTest extends TestCase
         $this->postJson("/api/v1/offline/packages/{$packageId}/sync", ['events' => [[...$event, 'id' => (string) Str::uuid(), 'local_sequence' => 2]]])
             ->assertStatus(409);
         $this->assertDatabaseHas('offline_packages', ['id' => $packageId, 'status' => 'revoked']);
+    }
+
+    public function test_offline_pack_records_are_selected_from_an_authorised_human_directory(): void
+    {
+        $fixture = $this->recruitmentFixture(['status' => 'awaiting_hard_copies', 'reference' => 'UPS/TEST/000002']);
+        $officer = User::factory()->create(['user_type' => 'hard_copy_receiving_officer']);
+        $officer->scopes()->create(['scope_type' => 'campaign', 'scope_id' => $fixture['campaign']->id, 'allowed_tasks' => ['*']]);
+        Sanctum::actingAs($officer);
+
+        $response = $this->getJson('/api/v1/offline/reference-options?pack_type=hard_copy&search='.$fixture['application']->reference)
+            ->assertOk()
+            ->assertJsonPath('options.0.value', $fixture['application']->id)
+            ->assertJsonMissingPath('options.0.id');
+
+        $this->assertStringContainsString($fixture['application']->reference, $response->json('options.0.label'));
+        $this->assertStringContainsString($fixture['applicant']->first_name, $response->json('options.0.label'));
+
+        foreach (['score_capture', 'attendance', 'hard_copy', 'verification', 'medical', 'panel_closure'] as $packType) {
+            $this->getJson("/api/v1/offline/reference-options?pack_type={$packType}")->assertOk();
+        }
     }
 
     public function test_verification_pack_merges_independent_fields_and_conflicts_on_the_same_field(): void

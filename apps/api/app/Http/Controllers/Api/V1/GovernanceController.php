@@ -84,6 +84,60 @@ class GovernanceController extends Controller
         return response()->json(['legal_hold' => $hold, 'duplicate' => false], 201);
     }
 
+    public function holdTargets(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('prisons_council_secretariat', 'auditor'), 403);
+        $data = $request->validate([
+            'entity_type' => ['required', Rule::in(self::PURGEABLE_CATEGORIES)],
+            'search' => ['nullable', 'string', 'max:120'],
+        ]);
+        $search = Str::lower(trim((string) ($data['search'] ?? '')));
+
+        $records = match ($data['entity_type']) {
+            'notifications' => DB::table('notifications as notifications')
+                ->leftJoin('applications', 'applications.id', '=', 'notifications.application_id')
+                ->leftJoin('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->select('notifications.id', 'notifications.event_code', 'notifications.channel', 'notifications.recipient', 'notifications.status', 'notifications.created_at', 'applications.reference', 'applicants.first_name', 'applicants.last_name')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw('LOWER(notifications.event_code) LIKE ?', [$needle])->orWhereRaw('LOWER(notifications.recipient) LIKE ?', [$needle])
+                        ->orWhereRaw("LOWER(COALESCE(applications.reference, '')) LIKE ?", [$needle])->orWhereRaw("LOWER(COALESCE(applicants.first_name, '') || ' ' || COALESCE(applicants.last_name, '')) LIKE ?", [$needle]);
+                }))
+                ->orderByDesc('notifications.created_at')->limit(7)->get()->map(fn ($record): array => [
+                    'value' => (string) $record->id,
+                    'label' => trim(implode(' · ', array_filter([Str::of($record->event_code)->replace(['.', '_'], ' ')->title()->toString(), $record->reference, trim("{$record->first_name} {$record->last_name}")]))),
+                    'description' => Str::headline($record->channel).' · '.Str::headline($record->status).' · '.substr((string) $record->created_at, 0, 10),
+                ]),
+            'exports' => DB::table('exports as exports')->join('users', 'users.id', '=', 'exports.requested_by')
+                ->select('exports.id', 'exports.export_type', 'exports.format', 'exports.purpose', 'exports.status', 'exports.created_at', 'users.name as requester')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw('LOWER(exports.export_type) LIKE ?', [$needle])->orWhereRaw('LOWER(exports.purpose) LIKE ?', [$needle])->orWhereRaw('LOWER(users.name) LIKE ?', [$needle]);
+                }))
+                ->orderByDesc('exports.created_at')->limit(7)->get()->map(fn ($record): array => [
+                    'value' => (string) $record->id,
+                    'label' => Str::headline($record->export_type).' · '.$record->requester,
+                    'description' => strtoupper($record->format).' · '.Str::headline($record->status).' · '.Str::limit($record->purpose, 60).' · '.substr((string) $record->created_at, 0, 10),
+                ]),
+            'expired_upload_sessions' => DB::table('upload_sessions as sessions')
+                ->join('applications', 'applications.id', '=', 'sessions.application_id')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->select('sessions.id', 'sessions.document_type', 'sessions.original_filename', 'sessions.status', 'sessions.created_at', 'applications.reference', 'applicants.first_name', 'applicants.last_name')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw('LOWER(sessions.document_type) LIKE ?', [$needle])->orWhereRaw('LOWER(sessions.original_filename) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(applications.reference) LIKE ?', [$needle])->orWhereRaw("LOWER(applicants.first_name || ' ' || applicants.last_name) LIKE ?", [$needle]);
+                }))
+                ->orderByDesc('sessions.created_at')->limit(7)->get()->map(fn ($record): array => [
+                    'value' => (string) $record->id,
+                    'label' => Str::headline($record->document_type).' · '.($record->reference ?: trim("{$record->first_name} {$record->last_name}")),
+                    'description' => $record->original_filename.' · '.Str::headline($record->status).' · '.substr((string) $record->created_at, 0, 10),
+                ]),
+        };
+
+        return response()->json(['options' => $records->values()]);
+    }
+
     public function releaseHold(Request $request, string $legalHold, AuditService $audit): JsonResponse
     {
         abort_unless($request->user()->hasRole('prisons_council_secretariat'), 403);

@@ -84,6 +84,35 @@ class SelectionController extends Controller
         return response()->json($runs);
     }
 
+    public function lookups(Request $request): JsonResponse
+    {
+        $this->authorize('create', SelectionRun::class);
+        $rankingRuns = DB::table('ranking_runs')
+            ->join('recruitment_posts', 'recruitment_posts.id', '=', 'ranking_runs.recruitment_post_id')
+            ->leftJoin('ranking_results', 'ranking_results.ranking_run_id', '=', 'ranking_runs.id')
+            ->groupBy('ranking_runs.id', 'ranking_runs.run_number', 'ranking_runs.run_at', 'recruitment_posts.name')
+            ->orderByDesc('ranking_runs.run_at')
+            ->limit(100)
+            ->get([
+                'ranking_runs.id', 'ranking_runs.run_number', 'ranking_runs.run_at',
+                'recruitment_posts.name as post_name', DB::raw('count(ranking_results.id) as candidate_count'),
+            ])->map(fn (object $run): array => [
+                'id' => $run->id,
+                'label' => "{$run->post_name} — ranking run {$run->run_number}",
+                'description' => "{$run->candidate_count} ranked candidate(s) • {$run->run_at}",
+            ]);
+        $buckets = DB::table('ranking_results')->whereNotNull('bucket_key')->distinct()->orderBy('bucket_key')->pluck('bucket_key')
+            ->map(fn (string $bucket): array => ['value' => $bucket, 'label' => str($bucket)->replace('_', ' ')->title()->toString()]);
+        $skills = DB::table('skill_categories')->where('active', true)->orderBy('name')->get(['code', 'name'])
+            ->map(fn (object $skill): array => ['value' => $skill->code, 'label' => $skill->name, 'description' => $skill->code]);
+
+        return response()->json(['data' => [
+            'ranking_runs' => $rankingRuns->values(),
+            'buckets' => $buckets->values(),
+            'skills' => $skills->values(),
+        ]]);
+    }
+
     public function store(RunSelectionRequest $request, SelectionService $selectionService, CanonicalJson $canonicalJson, AuditService $audit): JsonResponse
     {
         $data = $request->validated();
@@ -169,14 +198,14 @@ class SelectionController extends Controller
             'output_fingerprint' => $run->output_fingerprint,
         ]);
 
-        return response()->json(['run' => $run, 'outcomes' => $run->outcomes()->orderBy('bucket_key')->orderBy('position')->get()], 201);
+        return response()->json(['run' => $run, 'outcomes' => $this->humanOutcomes($run)], 201);
     }
 
     public function show(SelectionRun $selectionRun): JsonResponse
     {
         $this->authorize('view', $selectionRun);
 
-        return response()->json(['run' => $selectionRun, 'outcomes' => $selectionRun->outcomes()->orderBy('bucket_key')->orderBy('position')->get()]);
+        return response()->json(['run' => $selectionRun, 'outcomes' => $this->humanOutcomes($selectionRun)]);
     }
 
     public function certify(Request $request, SelectionRun $selectionRun, AuditService $audit): JsonResponse
@@ -276,5 +305,25 @@ class SelectionController extends Controller
         $audit->record('selection.override_decided', $selectionRun, actor: $request->user(), after: ['override_id' => $record->id, 'decision' => $data['decision']], reason: $data['reason'], approvalReference: $data['approval_reference']);
 
         return response()->json(['override' => DB::table('selection_overrides')->where('id', $record->id)->first(), 'outcomes' => $selectionRun->outcomes()->orderBy('position')->get()]);
+    }
+
+    private function humanOutcomes(SelectionRun $run): \Illuminate\Support\Collection
+    {
+        return DB::table('selection_outcomes')
+            ->join('applications', 'applications.id', '=', 'selection_outcomes.application_id')
+            ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+            ->where('selection_outcomes.selection_run_id', $run->id)
+            ->orderBy('selection_outcomes.bucket_key')->orderBy('selection_outcomes.position')
+            ->get([
+                'selection_outcomes.id', 'selection_outcomes.position', 'selection_outcomes.outcome', 'selection_outcomes.score',
+                'applications.reference as application_reference', 'applicants.first_name', 'applicants.middle_names', 'applicants.last_name',
+            ])->map(fn (object $outcome): array => [
+                'id' => $outcome->id,
+                'position' => $outcome->position,
+                'outcome' => $outcome->outcome,
+                'score' => $outcome->score,
+                'application_reference' => $outcome->application_reference,
+                'applicant_name' => collect([$outcome->first_name, $outcome->middle_names, $outcome->last_name])->filter()->implode(' '),
+            ]);
     }
 }

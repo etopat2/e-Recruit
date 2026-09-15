@@ -97,6 +97,7 @@ test('applicant mobile navigation stays reachable behind a full-screen action di
   await page.setViewportSize({ width: 390, height: 844 })
   await applicantSession(page)
   await page.route('**/api/v1/helpdesk/tickets', async (route) => route.fulfill({ json: { tickets: { data: [] } } }))
+  await page.route('**/api/v1/applications', async (route) => route.fulfill({ json: { data: [] } }))
 
   await page.goto('/help')
   const bottomNav = page.getByRole('navigation', { name: 'Applicant navigation' })
@@ -220,6 +221,7 @@ test('technical administrator lands on user administration after replacing a tem
     json: { token: 'permanent-technical-admin-token', user: administrator(false) },
   }))
   await page.route('**/api/v1/admin/roles', async (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/admin/scope-options', async (route) => route.fulfill({ json: { data: { tasks: [], references: {} } } }))
   await page.route('**/api/v1/admin/users*', async (route) => route.fulfill({
     json: { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } },
   }))
@@ -251,13 +253,16 @@ test('technical administrator provisions and secures staff accounts', async ({ p
     { code: 'system_administrator', name: 'System Administrator', is_decision_role: false, is_privileged: true },
   ]
   let created = false
-  const managedUser = () => ({ id: 9, name: 'Synthetic Helpdesk Officer', email: 'helpdesk-new@example.test', phone: null, user_type: 'helpdesk_officer', status: 'active', is_privileged: false, must_change_password: true, mfa_enabled: false, mfa_confirmed: false, last_login_at: null, password_changed_at: null, entity_version: created ? 2 : 1, roles: [{ code: 'helpdesk_officer', name: 'Helpdesk Officer' }], scopes: [] })
+  let savedScopePayload: Record<string, unknown> | null = null
+  const managedUser = () => ({ id: 9, name: 'Synthetic Helpdesk Officer', email: 'helpdesk-new@example.test', phone: null, user_type: 'helpdesk_officer', status: 'active', is_privileged: false, must_change_password: true, mfa_enabled: false, mfa_confirmed: false, last_login_at: null, password_changed_at: null, entity_version: created ? 2 : 1, roles: [{ code: 'helpdesk_officer', name: 'Helpdesk Officer' }], scopes: savedScopePayload ? [{ scope_type: 'national', scope_id: null, allowed_tasks: ['view:operations'], expires_at: null }] : [] })
   await page.route('**/api/v1/admin/roles', async (route) => route.fulfill({ json: { data: roles } }))
+  await page.route('**/api/v1/admin/scope-options', async (route) => route.fulfill({ json: { data: { tasks: [{ value: 'view:operations', label: 'View operational registers' }], references: {} } } }))
   await page.route('**/api/v1/admin/users*', async (route) => {
     if (route.request().method() === 'POST') { created = true; await route.fulfill({ status: 201, json: { user: managedUser(), temporary_password: 'Random-One-Time-2026', message: 'Account created. The temporary password is shown once.' } }) }
     else await route.fulfill({ json: { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } } })
   })
   await page.route('**/api/v1/admin/users/9/password-reset', async (route) => route.fulfill({ json: { user: managedUser(), temporary_password: 'Replacement-One-Time-2026', message: 'Password reset. The temporary password is shown once and all sessions were revoked.' } }))
+  await page.route('**/api/v1/admin/users/9/scopes', async (route) => { savedScopePayload = route.request().postDataJSON() as Record<string, unknown>; await route.fulfill({ json: { user: managedUser() } }) })
 
   await page.goto('/staff/users')
   await expect(page.getByRole('heading', { name: 'User and administrator accounts' })).toBeVisible()
@@ -273,6 +278,12 @@ test('technical administrator provisions and secures staff accounts', async ({ p
   await page.getByLabel('Reason for security action').fill('Approved synthetic account recovery test.')
   await page.getByRole('button', { name: 'Issue temporary password' }).click()
   await expect(page.getByText('Replacement-One-Time-2026')).toBeVisible()
+  await page.getByRole('button', { name: 'Authorisation scopes' }).click()
+  await page.getByRole('button', { name: 'Add scope' }).click()
+  await page.getByLabel('Reason for scope change').fill('Assign the approved whole-service operations view.')
+  await page.getByRole('button', { name: 'Replace scopes' }).click()
+  expect(savedScopePayload).toMatchObject({ scopes: [{ scope_type: 'national', scope_id: null, allowed_tasks: ['view:operations'], expires_at: null }] })
+  expect(JSON.stringify(savedScopePayload)).not.toContain('scope_label')
 })
 
 test('applicant registers, completes the dynamic form, uploads evidence, submits, and reaches acknowledgement', async ({ page }) => {
@@ -467,15 +478,20 @@ test('HQ runs a reproducible selection scenario and certifies the official draft
   await staffSession(page)
   const officialRun = { id: 'selection-1', run_number: 4, mode: 'official', status: 'draft', input_fingerprint: 'a'.repeat(64), output_fingerprint: 'b'.repeat(64), outcomes_count: 2 }
   await page.route('**/api/v1/selection-runs', async (route) => {
-    if (route.request().method() === 'POST') await route.fulfill({ status: 201, json: { run: officialRun, outcomes: [{ id: 'outcome-1', application_id: 'app-1', position: 1, outcome: 'selected', score: 91 }] } })
+    if (route.request().method() === 'POST') await route.fulfill({ status: 201, json: { run: officialRun, outcomes: [{ id: 'outcome-1', applicant_name: 'Amina Nabirye', application_reference: 'UPS/2026/WRD/000001', position: 1, outcome: 'selected', score: 91 }] } })
     else await route.fulfill({ json: { data: [officialRun] } })
   })
+  await page.route('**/api/v1/selection/lookups', async (route) => route.fulfill({ json: { data: { ranking_runs: [{ id: 'ranking-1', label: 'Recruit Warder — ranking run 3', description: '24 ranked candidates' }], buckets: [{ value: 'north', label: 'North' }], skills: [] } } }))
   await page.route('**/api/v1/selection-runs/selection-1/certify', async (route) => route.fulfill({ json: { run: { ...officialRun, status: 'certified' } } }))
   await page.goto('/staff/selection')
   await page.getByRole('button', { name: 'Run selection scenario' }).click()
-  await page.getByLabel('Ranking run ID').fill('ranking-1')
+  await page.getByRole('combobox', { name: 'Completed ranking run' }).fill('Warder')
+  await page.getByRole('option', { name: /Recruit Warder.*ranking run 3/ }).click()
   await page.getByLabel('Mode').selectOption('official')
-  await page.getByLabel('Quota buckets (JSON)').fill('{"north":1}')
+  await page.getByRole('button', { name: 'Add quota group' }).click()
+  await page.getByRole('combobox', { name: 'Quota group' }).fill('North')
+  await page.getByRole('option', { name: 'North', exact: true }).click()
+  await page.getByLabel('Places', { exact: true }).first().fill('1')
   await page.getByRole('button', { name: 'Run reproducible scenario' }).click()
   await expect(page.getByText('Reproducible selection scenario created.')).toBeVisible()
   await page.getByRole('button', { name: 'Certify with council approval' }).click()
@@ -483,6 +499,22 @@ test('HQ runs a reproducible selection scenario and certifies the official draft
   await page.getByLabel('Type CERTIFY to confirm').fill('CERTIFY')
   await page.getByRole('button', { name: 'Certify official run' }).click()
   await expect(page.getByText('Run 4 certified.')).toBeVisible()
+})
+
+test('governance officer places a legal hold through a human record directory', async ({ page }) => {
+  await staffSession(page)
+  await page.route('**/api/v1/governance/retention', async (route) => route.fulfill({ json: { policies: [], legal_holds: { data: [] }, purge_requests: { data: [] }, supported_purge_categories: ['notifications', 'exports', 'expired_upload_sessions'] } }))
+  await page.route('**/api/v1/governance/legal-hold-targets?*', async (route) => route.fulfill({ json: { options: [{ value: 'notification-1', label: 'Application Submitted · UPS/2026/WRD/000001 · Amina Nabirye', description: 'Portal · Delivered · 15 Sep 2026' }] } }))
+  await page.route('**/api/v1/governance/legal-holds', async (route) => route.fulfill({ status: 201, json: { duplicate: false, legal_hold: { id: 'hold-1' } } }))
+
+  await page.goto('/staff/governance')
+  await page.getByRole('button', { name: 'Place legal hold' }).click()
+  await page.getByRole('combobox', { name: 'Record to protect' }).fill('Amina')
+  await page.getByRole('option', { name: /Application Submitted.*Amina Nabirye/ }).click()
+  await page.getByLabel('Reason').fill('Preserve this notification for an authorised case review.')
+  await page.getByRole('button', { name: 'Place hold', exact: true }).click()
+  await expect(page.getByText('Legal hold placed; matching purge candidates are excluded.')).toBeVisible()
+  await expect(page.getByText('notification-1', { exact: true })).toHaveCount(0)
 })
 
 test('medical outcome gates an independently approved strict-order reserve replacement', async ({ page }) => {
@@ -542,6 +574,11 @@ test('PATS issues a training invitation and records candidate reporting', async 
 test('panel user checks in and scores offline, reloads locked, then reconciles once', async ({ page, context }) => {
   await staffSession(page)
   await page.route('**/api/v1/offline/devices', async (route) => route.fulfill({ status: 201, json: { device: { id: 'device-1' } } }))
+  await page.route('**/api/v1/offline/reference-options?*', async (route) => {
+    const packType = new URL(route.request().url()).searchParams.get('pack_type')
+    const score = packType === 'score_capture'
+    await route.fulfill({ json: { options: [{ value: score ? 'score-1' : 'assignment-1', label: 'Synthetic Applicant · UPS/SYNTHETIC', description: score ? 'Assessment score' : 'Interview attendance' }], medical_schedules: [] } })
+  })
   await page.route('**/api/v1/offline/packages', async (route) => {
     const body = route.request().postDataJSON() as { pack_type: 'attendance' | 'score_capture' }
     const attendancePack = body.pack_type === 'attendance'
@@ -562,7 +599,8 @@ test('panel user checks in and scores offline, reloads locked, then reconciles o
   await page.getByRole('button', { name: 'Configure and unlock' }).click()
   await page.getByRole('button', { name: 'Register this device' }).click()
   await page.getByLabel('Pack purpose').selectOption('attendance')
-  await page.getByLabel('Scoped entity IDs').fill('assignment-1')
+  await page.getByRole('combobox', { name: 'Records to include' }).fill('Synthetic')
+  await page.getByRole('option', { name: /Synthetic Applicant.*UPS\/SYNTHETIC/ }).click()
   await page.getByRole('button', { name: 'Issue scoped pack' }).click()
   await expect(page.getByText(/Interview attendance.*1 record/)).toBeVisible()
   await page.evaluate(() => navigator.serviceWorker.ready)
@@ -576,7 +614,8 @@ test('panel user checks in and scores offline, reloads locked, then reconciles o
   await expect(page.getByText(/reconciled encrypted pack was purged/)).toBeVisible()
 
   await page.getByLabel('Pack purpose').selectOption('score_capture')
-  await page.getByLabel('Scoped entity IDs').fill('score-1')
+  await page.getByRole('combobox', { name: 'Records to include' }).fill('Synthetic')
+  await page.getByRole('option', { name: /Synthetic Applicant.*UPS\/SYNTHETIC/ }).click()
   await page.getByRole('button', { name: 'Issue scoped pack' }).click()
   await expect(page.getByText(/Assessment scoring · 1 record/)).toBeVisible()
   await page.evaluate(() => navigator.serviceWorker.ready)
@@ -597,6 +636,7 @@ test('panel user checks in and scores offline, reloads locked, then reconciles o
 })
 
 test('two field devices surface a protected conflict for authorised resolution', async ({ page, browser }) => {
+  test.setTimeout(60_000)
   const secondContext = await browser.newContext()
   const secondPage = await secondContext.newPage()
   let secondResolved = false
@@ -604,6 +644,7 @@ test('two field devices surface a protected conflict for authorised resolution',
   async function prepareDevice(devicePage: import('@playwright/test').Page, suffix: 'a' | 'b') {
     await staffSession(devicePage)
     await devicePage.route('**/api/v1/offline/devices', async (route) => route.fulfill({ status: 201, json: { device: { id: `device-${suffix}` } } }))
+    await devicePage.route('**/api/v1/offline/reference-options?*', async (route) => route.fulfill({ json: { options: [{ value: 'shared-score', label: 'Shared Candidate · UPS/SYNTHETIC/SHARED', description: 'Assessment score' }], medical_schedules: [] } }))
     await devicePage.route('**/api/v1/offline/packages', async (route) => route.fulfill({ status: 201, json: {
       package: { id: `pack-${suffix}`, pack_type: 'score_capture', status: 'active', manifest: {}, manifest_fingerprint: suffix.repeat(64), expires_at: '2099-01-01T00:00:00Z' },
       server_records: [{ entity_type: 'assessment_score', entity_id: 'shared-score', server_version: 1, payload: { application_reference: 'UPS/SYNTHETIC/SHARED', maximum_mark: 100 } }], server_time: '2026-09-01T00:00:00Z',
@@ -623,7 +664,8 @@ test('two field devices surface a protected conflict for authorised resolution',
     await devicePage.getByLabel('Confirm offline PIN').fill(suffix === 'a' ? '111111' : '222222')
     await devicePage.getByRole('button', { name: 'Configure and unlock' }).click()
     await devicePage.getByRole('button', { name: 'Register this device' }).click()
-    await devicePage.getByLabel('Scoped entity IDs').fill('shared-score')
+    await devicePage.getByRole('combobox', { name: 'Records to include' }).fill('Shared')
+    await devicePage.getByRole('option', { name: /Shared Candidate.*UPS\/SYNTHETIC\/SHARED/ }).click()
     await devicePage.getByRole('button', { name: 'Issue scoped pack' }).click()
     await devicePage.getByRole('spinbutton', { name: 'Score', exact: true }).fill(suffix === 'a' ? '81' : '79')
     await devicePage.getByRole('button', { name: 'Queue encrypted event' }).click()
@@ -634,7 +676,7 @@ test('two field devices surface a protected conflict for authorised resolution',
     await prepareDevice(secondPage, 'b')
     await page.getByRole('button', { name: 'Synchronise now' }).click()
     await secondPage.getByRole('button', { name: 'Synchronise now' }).click()
-    await expect(secondPage.getByText(/local 79, server 81/)).toBeVisible()
+    await expect(secondPage.getByText(/Local value: 79.*Server value: 81/)).toBeVisible()
     await secondPage.getByLabel('Resolution reason').fill('Retain the first device score after supervisor evidence review.')
     await secondPage.getByRole('button', { name: 'Keep server value' }).click()
     await expect(secondPage.getByText(/Conflict resolved by retaining the current server value/)).toBeVisible()

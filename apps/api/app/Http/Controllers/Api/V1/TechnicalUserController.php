@@ -63,6 +63,43 @@ class TechnicalUserController extends Controller
         ])]);
     }
 
+    public function scopeOptions(): JsonResponse
+    {
+        $tasks = collect([
+            ['value' => '*', 'label' => 'All tasks in this scope'],
+            ['value' => 'view:application', 'label' => 'View applications'],
+            ['value' => 'view:operations', 'label' => 'View operational registers'],
+            ['value' => 'decision:verification', 'label' => 'Record verification decisions'],
+            ['value' => 'decision:eligibility', 'label' => 'Record eligibility decisions'],
+            ['value' => 'decision:schedule', 'label' => 'Schedule interviews'],
+            ['value' => 'decision:attendance', 'label' => 'Record attendance'],
+            ['value' => 'decision:score', 'label' => 'Record assessment scores'],
+            ['value' => 'decision:panel_close', 'label' => 'Close interview panels'],
+            ['value' => 'decision:medical', 'label' => 'Record medical decisions'],
+            ['value' => 'decision:selection', 'label' => 'Record selection decisions'],
+            ['value' => 'decision:training', 'label' => 'Record training intake'],
+            ['value' => 'system:users', 'label' => 'Manage user accounts'],
+        ]);
+        $option = fn (object $item, string $label, ?string $description = null): array => [
+            'value' => (string) $item->id,
+            'label' => $label,
+            'description' => $description,
+        ];
+
+        return response()->json(['data' => [
+            'tasks' => $tasks,
+            'references' => [
+                'region' => DB::table('prison_regions')->where('active', true)->orderBy('name')->get(['id', 'name'])->map(fn (object $item): array => $option($item, $item->name)),
+                'centre' => DB::table('recruitment_centres')->join('prison_regions', 'prison_regions.id', '=', 'recruitment_centres.prison_region_id')->where('recruitment_centres.active', true)->orderBy('recruitment_centres.name')->get(['recruitment_centres.id', 'recruitment_centres.name', 'prison_regions.name as region_name'])->map(fn (object $item): array => $option($item, $item->name, $item->region_name)),
+                'panel' => DB::table('panels')->join('centre_sessions', 'centre_sessions.id', '=', 'panels.centre_session_id')->join('recruitment_centres', 'recruitment_centres.id', '=', 'centre_sessions.recruitment_centre_id')->orderByDesc('centre_sessions.session_date')->limit(500)->get(['panels.id', 'panels.name', 'panels.code', 'recruitment_centres.name as centre_name', 'centre_sessions.session_date'])->map(fn (object $item): array => $option($item, "{$item->centre_name} — {$item->name}", "{$item->session_date} • {$item->code}")),
+                'campaign' => DB::table('recruitment_campaigns')->orderByDesc('year')->orderBy('name')->get(['id', 'name', 'code'])->map(fn (object $item): array => $option($item, $item->name, $item->code)),
+                'post' => DB::table('recruitment_posts')->join('recruitment_campaigns', 'recruitment_campaigns.id', '=', 'recruitment_posts.recruitment_campaign_id')->orderByDesc('recruitment_campaigns.year')->orderBy('recruitment_posts.name')->get(['recruitment_posts.id', 'recruitment_posts.name', 'recruitment_posts.code', 'recruitment_campaigns.name as campaign_name'])->map(fn (object $item): array => $option($item, "{$item->campaign_name} — {$item->name}", $item->code)),
+                'stage' => DB::table('campaign_stages')->join('recruitment_posts', 'recruitment_posts.id', '=', 'campaign_stages.recruitment_post_id')->orderBy('recruitment_posts.name')->orderBy('campaign_stages.sequence')->get(['campaign_stages.id', 'campaign_stages.name', 'campaign_stages.stage_code', 'recruitment_posts.name as post_name'])->map(fn (object $item): array => $option($item, "{$item->post_name} — {$item->name}", $item->stage_code)),
+                'task' => $tasks,
+            ],
+        ]]);
+    }
+
     public function store(Request $request, AuditService $audit): JsonResponse
     {
         $request->merge(['email' => mb_strtolower(trim((string) $request->input('email')))]);

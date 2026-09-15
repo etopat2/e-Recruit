@@ -25,6 +25,134 @@ use Illuminate\Support\Str;
 
 class OfflineSyncController extends Controller
 {
+    public function referenceOptions(Request $request, ScopeAuthorizer $scopeAuthorizer): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('panel_member', 'panel_head', 'attendance_officer', 'centre_coordinator', 'hard_copy_receiving_officer', 'regional_recruitment_officer', 'verification_officer', 'data_clerk', 'medical_officer'), 403);
+        $data = $request->validate([
+            'pack_type' => ['required', 'in:score_capture,attendance,hard_copy,verification,medical,panel_closure'],
+            'search' => ['nullable', 'string', 'max:120'],
+        ]);
+        $search = Str::lower(trim((string) ($data['search'] ?? '')));
+
+        $rows = match ($data['pack_type']) {
+            'score_capture' => DB::table('assessment_scores as scores')
+                ->join('interview_assignments as assignments', 'assignments.id', '=', 'scores.interview_assignment_id')
+                ->join('applications', 'applications.id', '=', 'assignments.application_id')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->join('assessment_definitions as definitions', 'definitions.id', '=', 'scores.assessment_definition_id')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw("LOWER(COALESCE(applications.reference, '')) LIKE ?", [$needle])->orWhereRaw("LOWER(applicants.first_name || ' ' || applicants.last_name) LIKE ?", [$needle])->orWhereRaw('LOWER(definitions.name) LIKE ?', [$needle]);
+                }))
+                ->select('scores.id', 'scores.assessor_id', 'applications.id as application_id', 'applications.reference', 'applicants.first_name', 'applicants.last_name', 'definitions.name as detail', 'scores.status')
+                ->orderBy('applicants.last_name')->limit(75)->get(),
+            'attendance' => DB::table('interview_assignments as assignments')
+                ->join('applications', 'applications.id', '=', 'assignments.application_id')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->join('panels', 'panels.id', '=', 'assignments.panel_id')
+                ->join('centre_sessions as sessions', 'sessions.id', '=', 'assignments.centre_session_id')
+                ->join('recruitment_centres as centres', 'centres.id', '=', 'sessions.recruitment_centre_id')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw("LOWER(COALESCE(applications.reference, '')) LIKE ?", [$needle])->orWhereRaw("LOWER(applicants.first_name || ' ' || applicants.last_name) LIKE ?", [$needle])->orWhereRaw('LOWER(panels.name) LIKE ?', [$needle])->orWhereRaw('LOWER(centres.name) LIKE ?', [$needle]);
+                }))
+                ->select('assignments.id', 'applications.id as application_id', 'applications.reference', 'applicants.first_name', 'applicants.last_name', 'panels.name as detail', 'centres.name as status')
+                ->orderBy('applicants.last_name')->limit(75)->get(),
+            'hard_copy' => DB::table('applications')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw("LOWER(COALESCE(applications.reference, '')) LIKE ?", [$needle])->orWhereRaw("LOWER(applicants.first_name || ' ' || applicants.last_name) LIKE ?", [$needle]);
+                }))
+                ->select('applications.id', 'applications.id as application_id', 'applications.reference', 'applicants.first_name', 'applicants.last_name', 'applications.status', DB::raw("'Required document checklist' as detail"))
+                ->where('applications.active', true)->orderBy('applicants.last_name')->limit(75)->get(),
+            'verification' => DB::table('documents')
+                ->join('applications', 'applications.id', '=', 'documents.application_id')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw("LOWER(COALESCE(applications.reference, '')) LIKE ?", [$needle])->orWhereRaw("LOWER(applicants.first_name || ' ' || applicants.last_name) LIKE ?", [$needle])->orWhereRaw('LOWER(documents.original_filename) LIKE ?', [$needle])->orWhereRaw('LOWER(documents.document_type) LIKE ?', [$needle]);
+                }))
+                ->select('documents.id', 'applications.id as application_id', 'applications.reference', 'applicants.first_name', 'applicants.last_name', 'documents.original_filename as detail', 'documents.document_type as status')
+                ->orderBy('applicants.last_name')->limit(75)->get(),
+            'medical' => DB::table('applications')
+                ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw("LOWER(COALESCE(applications.reference, '')) LIKE ?", [$needle])->orWhereRaw("LOWER(applicants.first_name || ' ' || applicants.last_name) LIKE ?", [$needle]);
+                }))
+                ->where(function ($query): void {
+                    $query->whereExists(function ($selected): void {
+                        $selected->selectRaw('1')->from('selection_outcomes')->join('selection_runs', 'selection_runs.id', '=', 'selection_outcomes.selection_run_id')
+                            ->whereColumn('selection_outcomes.application_id', 'applications.id')->where('selection_outcomes.outcome', 'selected')->where('selection_runs.status', 'certified');
+                    })->orWhereExists(function ($reserve): void {
+                        $reserve->selectRaw('1')->from('reserve_replacement_recommendations')->join('selection_runs', 'selection_runs.id', '=', 'reserve_replacement_recommendations.selection_run_id')
+                            ->whereColumn('reserve_replacement_recommendations.reserve_application_id', 'applications.id')->where('reserve_replacement_recommendations.status', 'pending_approval')->where('selection_runs.status', 'certified');
+                    });
+                })
+                ->select('applications.id', 'applications.id as application_id', 'applications.reference', 'applications.recruitment_post_id', 'applicants.first_name', 'applicants.last_name', 'applications.status', DB::raw("'Certified selection' as detail"))
+                ->orderBy('applicants.last_name')->limit(75)->get(),
+            'panel_closure' => DB::table('panels')
+                ->join('centre_sessions as sessions', 'sessions.id', '=', 'panels.centre_session_id')
+                ->join('recruitment_centres as centres', 'centres.id', '=', 'sessions.recruitment_centre_id')
+                ->join('interview_assignments as assignments', 'assignments.panel_id', '=', 'panels.id')
+                ->join('applications', 'applications.id', '=', 'assignments.application_id')
+                ->when($search !== '', fn ($query) => $query->where(function ($matches) use ($search): void {
+                    $needle = "%{$search}%";
+                    $matches->whereRaw('LOWER(panels.name) LIKE ?', [$needle])->orWhereRaw('LOWER(panels.code) LIKE ?', [$needle])->orWhereRaw('LOWER(centres.name) LIKE ?', [$needle]);
+                }))
+                ->select('panels.id', 'applications.id as application_id', 'panels.name as first_name', 'panels.code as last_name', 'centres.name as detail', 'panels.status', DB::raw('NULL as reference'))
+                ->groupBy('panels.id', 'applications.id', 'centres.name')->orderBy('panels.name')->limit(75)->get(),
+        };
+
+        $options = $rows->filter(function ($row) use ($request, $scopeAuthorizer, $data): bool {
+            $application = Application::query()->find($row->application_id);
+            if ($application === null) {
+                return false;
+            }
+
+            return match ($data['pack_type']) {
+                'score_capture' => $request->user()->hasRole('panel_member', 'panel_head')
+                    && $scopeAuthorizer->canPerform($request->user(), 'decision:score', $application)
+                    && (! $request->user()->hasRole('panel_member') || (int) $row->assessor_id === (int) $request->user()->id),
+                'attendance' => $request->user()->hasRole('attendance_officer', 'centre_coordinator', 'panel_head')
+                    && $scopeAuthorizer->canPerform($request->user(), 'decision:attendance', $application),
+                'hard_copy' => $request->user()->hasRole('hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer')
+                    && $scopeAuthorizer->canViewApplication($request->user(), $application),
+                'verification' => $request->user()->hasRole('verification_officer', 'data_clerk')
+                    && $scopeAuthorizer->canPerform($request->user(), 'decision:verification', $application),
+                'medical' => $scopeAuthorizer->canViewRestrictedMedical($request->user(), $application),
+                'panel_closure' => $request->user()->hasRole('panel_head')
+                    && $scopeAuthorizer->canPerform($request->user(), 'decision:panel_close', $application),
+            };
+        })->map(function ($row): array {
+            $name = trim("{$row->first_name} {$row->last_name}");
+
+            return [
+                'value' => (string) $row->id,
+                'label' => trim($name.($row->reference ? " · {$row->reference}" : '')),
+                'description' => trim(Str::headline((string) $row->detail).' · '.Str::headline((string) $row->status)),
+                'data' => isset($row->recruitment_post_id) ? ['recruitment_post_id' => $row->recruitment_post_id] : null,
+            ];
+        })->unique('value');
+        if ($search !== '') {
+            $options = $options->filter(fn (array $option): bool => str_contains(Str::lower($option['label'].' '.$option['description']), $search));
+        }
+
+        $schedules = $data['pack_type'] === 'medical'
+            ? DB::table('medical_schedules as schedules')->join('recruitment_posts as posts', 'posts.id', '=', 'schedules.recruitment_post_id')
+                ->select('schedules.id', 'schedules.recruitment_post_id', 'schedules.facility', 'schedules.scheduled_date', 'schedules.reporting_time', 'posts.name as post_name')
+                ->where('schedules.scheduled_date', '>=', now()->toDateString())->orderBy('schedules.scheduled_date')->limit(50)->get()->map(fn ($schedule): array => [
+                    'value' => (string) $schedule->id,
+                    'label' => $schedule->facility.' · '.substr((string) $schedule->scheduled_date, 0, 10),
+                    'description' => $schedule->post_name.' · '.$schedule->reporting_time,
+                    'data' => ['recruitment_post_id' => $schedule->recruitment_post_id],
+                ])
+            : collect();
+
+        return response()->json(['options' => $options->take(7)->values(), 'medical_schedules' => $schedules]);
+    }
+
     public function registerDevice(Request $request, AuditService $audit): JsonResponse
     {
         $data = $request->validate([
@@ -341,13 +469,15 @@ class OfflineSyncController extends Controller
     private function serverRecord(string $packType, string $entityId, array $scope, Request $request, ScopeAuthorizer $scopeAuthorizer): array
     {
         if ($packType === 'score_capture') {
-            $score = AssessmentScore::query()->with(['assignment.application', 'definition'])->find($entityId);
+            abort_unless($request->user()->hasRole('panel_member', 'panel_head'), 403);
+            $score = AssessmentScore::query()->with(['assignment.application.applicant', 'definition'])->find($entityId);
             abort_if($score === null, 422, 'A requested assessment score record was not found.');
             abort_unless($scopeAuthorizer->canPerform($request->user(), 'decision:score', $score->assignment->application), 403);
             abort_if($request->user()->hasRole('panel_member') && (int) $score->assessor_id !== (int) $request->user()->id, 403, 'Panel members may download only their own score records.');
 
             return ['entity_type' => 'assessment_score', 'entity_id' => $score->id, 'server_version' => $score->entity_version, 'payload' => [
                 'application_reference' => $score->assignment->application->reference,
+                'candidate_name' => trim($score->assignment->application->applicant->first_name.' '.$score->assignment->application->applicant->last_name),
                 'assignment_id' => $score->interview_assignment_id,
                 'assessment_code' => $score->definition->code,
                 'assessment_name' => $score->definition->name,
@@ -357,13 +487,15 @@ class OfflineSyncController extends Controller
             ]];
         }
         if (in_array($packType, ['interview', 'attendance'], true)) {
-            $assignment = InterviewAssignment::query()->with('application')->find($entityId);
+            abort_unless($request->user()->hasRole('attendance_officer', 'centre_coordinator', 'panel_head'), 403);
+            $assignment = InterviewAssignment::query()->with('application.applicant')->find($entityId);
             abort_if($assignment === null, 422, 'A requested interview assignment was not found.');
             abort_unless($scopeAuthorizer->canPerform($request->user(), 'decision:attendance', $assignment->application), 403);
             $attendance = DB::table('attendance_records')->where('interview_assignment_id', $assignment->id)->first();
 
             return ['entity_type' => 'interview_assignment', 'entity_id' => $assignment->id, 'server_version' => (int) ($attendance->entity_version ?? 1), 'payload' => [
                 'application_reference' => $assignment->application->reference,
+                'candidate_name' => trim($assignment->application->applicant->first_name.' '.$assignment->application->applicant->last_name),
                 'assignment_order' => $assignment->assignment_order,
                 'panel_id' => $assignment->panel_id,
                 'attendance_status' => $attendance->status ?? null,
@@ -371,20 +503,21 @@ class OfflineSyncController extends Controller
         }
         if ($packType === 'hard_copy') {
             abort_unless($request->user()->hasRole('hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer'), 403);
-            $application = Application::query()->find($entityId);
+            $application = Application::query()->with('applicant')->find($entityId);
             abort_if($application === null, 422, 'A requested application was not found.');
             abort_unless($scopeAuthorizer->canViewApplication($request->user(), $application), 403);
             $requirements = DB::table('campaign_document_requirements')->where('recruitment_post_id', $application->recruitment_post_id)->where('campaign_version_id', $application->campaign_version_id)->get(['document_type', 'label', 'hard_copy_required', 'original_required_at_interview']);
 
             return ['entity_type' => 'application', 'entity_id' => $application->id, 'server_version' => $application->entity_version, 'payload' => [
                 'application_reference' => $application->reference,
+                'candidate_name' => trim($application->applicant->first_name.' '.$application->applicant->last_name),
                 'status' => $application->status,
                 'document_requirements' => $requirements,
             ]];
         }
         if ($packType === 'verification') {
             abort_unless($request->user()->hasRole('verification_officer', 'data_clerk'), 403);
-            $document = Document::query()->with('application')->find($entityId);
+            $document = Document::query()->with('application.applicant')->find($entityId);
             abort_if($document === null, 422, 'A requested document was not found.');
             abort_unless($scopeAuthorizer->canPerform($request->user(), 'decision:verification', $document->application), 403);
             $fields = DB::table('extracted_fields')->whereIn('document_extraction_id', DB::table('document_extractions')->where('document_id', $document->id)->select('id'))
@@ -392,6 +525,7 @@ class OfflineSyncController extends Controller
 
             return ['entity_type' => 'document', 'entity_id' => $document->id, 'server_version' => $document->version, 'payload' => [
                 'application_reference' => $document->application->reference,
+                'candidate_name' => trim($document->application->applicant->first_name.' '.$document->application->applicant->last_name),
                 'document_type' => $document->document_type,
                 'document_version' => $document->version,
                 'preview_endpoint' => "/api/v1/documents/{$document->id}/download",
