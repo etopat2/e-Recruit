@@ -274,3 +274,31 @@ There are no modal tests because no modal exists. There is backend coverage of t
 13. **Client route visibility is coarse.** Most staff routes use only `meta.staff`, and navigation largely distinguishes applicant, staff, and technical administrator (`apps/web/src/router.ts:12-20,33-45`; `apps/web/src/components/AppShell.vue:29-40`). Individual APIs perform finer role/scope checks, so users can still reach a page and receive 403 responses. UI work should consume explicit capabilities or role-aware route metadata without weakening backend authorization.
 
 14. **Current tests provide a base but not the new primitives.** Selects, form journeys, and auth sequencing have coverage, but there is no modal suite, no frontend MFA-enrolment E2E, no QR scan/fallback test, and no email-OTP test (`apps/web/src/lib/limitedSelectViewport.spec.ts:17-53`; `apps/web/e2e/portal.spec.ts:10-435`; `apps/api/tests/Feature/TechnicalUserAdministrationTest.php:83-131`). Each new primitive/channel needs focused unit, accessibility, desktop/mobile E2E, and backend abuse-case coverage.
+
+## 11. Post-audit verification and operations remediation (15 September 2026)
+
+### Task A — before and after
+
+Before remediation, the verification workbench interpolated the full stored application draft as an object and displayed document ULIDs as source labels. That exposed the primary-key format and made personal, address, education and declaration evidence difficult to review.
+
+The workbench now presents named personal fields, origin/residence address lineage in District → County → Subcounty → Parish → Village order, a compact education table, Yes/No declarations, formatted dates, original filenames, protected previews and human document-source labels. Internal application and document keys remain only in route parameters, component keys and API payloads. The desktop document and decision panes are an exact 50/50 split and stack at the established mobile breakpoint. A source scan and component regression test confirm that the page no longer renders the stored object, storage paths, hashes or raw IDs.
+
+### Task D — LC1 prerequisite and allocation design
+
+The original application model had a post-level LC-source policy, but it did not persist which of origin or residence was actually supported by an LC1 letter for `origin_or_residence` posts. This remediation therefore built the prerequisite first: the application form captures the LC1 address choice, submission resolves it against the canonical administrative address, and the application persists `routing_address_type` plus `routing_district_id`. Legacy validated records are resolved through the same service before allocation and fail with a corrective validation message when the evidence is ambiguous.
+
+Interview allocation is now a versioned preview/commit workflow. It resolves routing districts to prison regions through effective jurisdiction mappings, selects active centres with scheduled/open sessions and panels, and deliberately uses the greedy longest-processing-time heuristic. Every district is allocated whole to the least-loaded centre that can hold it; candidates are then distributed to the least-loaded available panels. Input and result fingerprints prevent stale previews from being committed, each rerun receives a new immutable version, and committed assignments retain the causal run identifier. Commit reuses the protected invitation and notification pipeline.
+
+Backend regression coverage proves that a district is never split and that a synthetic 8/7/6/5 candidate distribution reaches a 13/13 centre balance without asserting impossible equality for every dataset. It also covers rerun versioning, queued invitations, human lookup labels, document checklists and scope denial.
+
+### New backend endpoints
+
+- `GET /api/v1/operations/lookups` — role/scope-filtered human labels for posts, regions, receiving offices, centre sessions, interview assignments, panels and downstream medical/selection/training registers.
+- `GET /api/v1/operations/applications?search=…&context=…` — rate-limited, seven-result search by applicant name, NIN or applicant-facing reference.
+- `GET /api/v1/interview-allocation-runs` — recent immutable allocation versions.
+- `POST /api/v1/interview-allocation-runs/preview` — store a new district-balanced preview and fingerprints.
+- `POST /api/v1/interview-allocation-runs/{allocationRun}/commit` — commit an unchanged preview, persist assignments and queue invitations.
+
+### Operations form audit result
+
+All eleven actions on the Operations page now use the shared dialog, floating combobox, validation alert and toast primitives. Application, post, region, office, assignment, panel, schedule, selection, medical, training and replacement relationships are chosen using human-readable, scoped registers; the underlying IDs are silent submitted values. Hard-copy documents are checkboxes, training instructions are repeatable fields, and bounded statuses are select/combobox controls. No JSON textarea or raw-ID/hash paste field remains on either the Operations or Verification page, and neither page renders a raw internal ID as user-facing text.

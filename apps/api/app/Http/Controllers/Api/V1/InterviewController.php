@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\DeliverNotificationJob;
 use App\Models\Application;
 use App\Models\InterviewAssignment;
 use App\Models\RecruitmentPost;
 use App\Services\AuditService;
-use App\Services\InvitationArtifactService;
+use App\Services\InterviewInvitationService;
 use App\Services\ScopeAuthorizer;
 use App\Support\CanonicalJson;
 use Illuminate\Http\JsonResponse;
@@ -160,56 +159,21 @@ class InterviewController extends Controller
         return response()->json(['attendance' => DB::table('attendance_records')->where('id', $id)->first()]);
     }
 
-    public function invite(Request $request, InterviewAssignment $assignment, InvitationArtifactService $artifacts, AuditService $audit): JsonResponse
+    public function invite(Request $request, InterviewAssignment $assignment, InterviewInvitationService $invitations, AuditService $audit): JsonResponse
     {
         $assignment->loadMissing('application');
         $this->authorize('view', $assignment->application);
         abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'regional_recruitment_officer', 'centre_coordinator'), 403);
         $data = $request->validate(['instructions' => ['required', 'array', 'min:1', 'max:50'], 'instructions.*' => ['string', 'max:500']]);
-        $existing = DB::table('interview_invitations')->where('interview_assignment_id', $assignment->id)->first();
-        if ($existing !== null) {
-            return response()->json(['invitation' => $existing, 'idempotent' => true]);
+        $result = $invitations->issue($assignment, $data['instructions'], $request->user());
+        if (! $result['idempotent']) {
+            $audit->record('interview.invitation_issued', $assignment, actor: $request->user(), after: [
+                'invitation_id' => $result['invitation']->id,
+                'automated' => false,
+            ]);
         }
-        $details = DB::table('interview_assignments as assignments')
-            ->join('applications', 'applications.id', '=', 'assignments.application_id')
-            ->join('recruitment_posts', 'recruitment_posts.id', '=', 'applications.recruitment_post_id')
-            ->join('centre_sessions', 'centre_sessions.id', '=', 'assignments.centre_session_id')
-            ->join('recruitment_centres', 'recruitment_centres.id', '=', 'centre_sessions.recruitment_centre_id')
-            ->join('panels', 'panels.id', '=', 'assignments.panel_id')
-            ->where('assignments.id', $assignment->id)
-            ->select('assignments.id', 'applications.reference', 'applications.applicant_id', 'recruitment_posts.name as post_name', 'centre_sessions.code as session_code', 'centre_sessions.session_date', 'centre_sessions.reporting_time', 'centre_sessions.room', 'recruitment_centres.name as centre_name', 'recruitment_centres.address as centre_address', 'panels.code as panel_code')->firstOrFail();
-        $id = (string) Str::ulid();
-        $artifact = $artifacts->create('pdf.interview-invite', ['assignment' => $details, 'instructions' => $data['instructions']], "artefacts/interviews/{$id}.pdf", $this->verificationUrl($details->reference));
-        $notificationId = (string) Str::ulid();
-        DB::transaction(function () use ($id, $assignment, $data, $artifact, $request, $notificationId, $details): void {
-            DB::table('interview_invitations')->insert([
-                'id' => $id,
-                'interview_assignment_id' => $assignment->id,
-                'instructions' => json_encode($data['instructions'], JSON_THROW_ON_ERROR),
-                'document_path' => $artifact['path'],
-                'sha256' => $artifact['sha256'],
-                'issued_by' => $request->user()->id,
-                'issued_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $recipient = DB::table('applicants')->where('id', $details->applicant_id)->value('user_id');
-            DB::table('notifications')->insert([
-                'id' => $notificationId,
-                'application_id' => $assignment->application_id,
-                'event_code' => 'interview.invited',
-                'channel' => 'in_portal',
-                'recipient' => (string) $recipient,
-                'status' => 'pending',
-                'idempotency_key' => hash('sha256', "interview.invited:{$assignment->id}"),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }, 3);
-        DeliverNotificationJob::dispatch($notificationId);
-        $audit->record('interview.invitation_issued', $assignment, actor: $request->user(), after: ['invitation_id' => $id, 'sha256' => $artifact['sha256']]);
 
-        return response()->json(['invitation' => DB::table('interview_invitations')->where('id', $id)->first(), 'idempotent' => false], 201);
+        return response()->json($result, $result['idempotent'] ? 200 : 201);
     }
 
     public function downloadInvitation(Request $request, string $invitation): StreamedResponse
@@ -219,11 +183,6 @@ class InterviewController extends Controller
         $this->authorize('view', $assignment->application);
 
         return Storage::disk(config('erecruit.uploads.disk'))->download($record->document_path, "{$assignment->application->reference}-interview-invitation.pdf", ['Content-Type' => 'application/pdf', 'Cache-Control' => 'private, no-store']);
-    }
-
-    private function verificationUrl(string $reference): string
-    {
-        return rtrim((string) config('app.url'), '/').'/official-artifacts/verify?reference='.rawurlencode($reference);
     }
 
     private function assertSessionScope(Request $request, string $sessionId): void

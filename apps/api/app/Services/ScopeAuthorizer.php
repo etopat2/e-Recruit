@@ -26,6 +26,10 @@ class ScopeAuthorizer
             $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
         })->get();
 
+        if ($scopes->contains(fn ($scope): bool => $scope->scope_type === 'national')) {
+            return true;
+        }
+
         foreach ($scopes as $scope) {
             if ($scope->scope_type === 'campaign' && $scope->scope_id === $application->recruitment_campaign_id) {
                 return true;
@@ -111,6 +115,22 @@ class ScopeAuthorizer
 
     private function applicationMapsTo(Application $application, ?string $centreId = null, ?string $regionId = null): bool
     {
+        if ($application->routing_district_id !== null) {
+            return DB::table('district_centre_mappings')
+                ->join('recruitment_centres', 'recruitment_centres.id', '=', 'district_centre_mappings.recruitment_centre_id')
+                ->where('district_centre_mappings.district_id', $application->routing_district_id)
+                ->where(function ($query) use ($application): void {
+                    $query->whereNull('district_centre_mappings.recruitment_campaign_id')->orWhere('district_centre_mappings.recruitment_campaign_id', $application->recruitment_campaign_id);
+                })
+                ->where('district_centre_mappings.effective_from', '<=', now()->toDateString())
+                ->where(function ($query): void {
+                    $query->whereNull('district_centre_mappings.effective_to')->orWhere('district_centre_mappings.effective_to', '>=', now()->toDateString());
+                })
+                ->when($centreId !== null, fn ($query) => $query->where('district_centre_mappings.recruitment_centre_id', $centreId))
+                ->when($regionId !== null, fn ($query) => $query->where('recruitment_centres.prison_region_id', $regionId))
+                ->exists();
+        }
+
         $policy = DB::table('recruitment_posts')->where('id', $application->recruitment_post_id)->value('lc_source_policy');
         $addressTypes = match ($policy) {
             'origin' => ['origin'],

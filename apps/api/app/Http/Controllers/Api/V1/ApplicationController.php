@@ -14,6 +14,7 @@ use App\Models\CampaignVersion;
 use App\Models\EducationInstitution;
 use App\Models\RecruitmentCampaign;
 use App\Models\RecruitmentPost;
+use App\Services\ApplicationRoutingService;
 use App\Services\AuditService;
 use App\Support\CanonicalJson;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -42,7 +43,7 @@ class ApplicationController extends Controller
             ])
             ->with([
                 'campaign:id,code,name',
-                'post:id,recruitment_campaign_id,code,name,section_configuration,hard_copy_required',
+                'post:id,recruitment_campaign_id,code,name,section_configuration,hard_copy_required,lc_source_policy',
             ]);
         if ($user->user_type === 'applicant') {
             $query->where('applicant_id', $user->applicant?->id);
@@ -151,6 +152,7 @@ class ApplicationController extends Controller
         SubmitApplicationRequest $request,
         Application $application,
         ApplicationReferenceService $referenceService,
+        ApplicationRoutingService $routingService,
         CanonicalJson $canonicalJson,
         AuditService $audit,
     ): ApplicationResource|JsonResponse {
@@ -170,7 +172,8 @@ class ApplicationController extends Controller
         $this->assertSubmissionComplete($application);
         $this->assertAdministrativeAddressesValid($application);
         $this->assertEducationInstitutionsValid($application);
-        DB::transaction(function () use ($application, $data, $referenceService, $canonicalJson, $request, $audit): void {
+        $routing = $routingService->resolveDraft($application);
+        DB::transaction(function () use ($application, $data, $referenceService, $canonicalJson, $request, $audit, $routing): void {
             $reference = $referenceService->allocate($application);
             $snapshot = [
                 'applicant' => $application->applicant->only(['first_name', 'middle_names', 'last_name', 'date_of_birth', 'sex', 'nationality', 'primary_phone', 'email']),
@@ -202,6 +205,8 @@ class ApplicationController extends Controller
 
             $application->forceFill([
                 'status' => $targetStatus,
+                'routing_address_type' => $routing['address_type'],
+                'routing_district_id' => $routing['district_id'],
                 'submission_snapshot' => $snapshot,
                 'submission_fingerprint' => $canonicalJson->hash($snapshot),
                 'submission_idempotency_key' => $data['idempotency_key'],

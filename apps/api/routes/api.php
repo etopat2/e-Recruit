@@ -13,11 +13,13 @@ use App\Http\Controllers\Api\V1\GovernanceController;
 use App\Http\Controllers\Api\V1\HardCopyController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\HelpdeskController;
+use App\Http\Controllers\Api\V1\InterviewAllocationController;
 use App\Http\Controllers\Api\V1\InterviewController;
 use App\Http\Controllers\Api\V1\MedicalController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\OfficialArtifactController;
 use App\Http\Controllers\Api\V1\OfflineSyncController;
+use App\Http\Controllers\Api\V1\OperationsLookupController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SelectionController;
 use App\Http\Controllers\Api\V1\TechnicalUserController;
@@ -115,7 +117,13 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('applications/{application}/hard-copy-receipts', [HardCopyController::class, 'store'])->name('hard-copy.store');
             Route::post('applications/{application}/eligibility-runs', [EligibilityController::class, 'store'])->name('eligibility.store');
 
+            Route::get('operations/lookups', [OperationsLookupController::class, 'index'])->name('operations.lookups.index');
+            Route::get('operations/applications', [OperationsLookupController::class, 'applications'])->middleware('throttle:120,1')->name('operations.applications.index');
+
             Route::post('posts/{post}/interview-assignments', [InterviewController::class, 'assign'])->name('interviews.assign');
+            Route::get('interview-allocation-runs', [InterviewAllocationController::class, 'index'])->name('interview-allocations.index');
+            Route::post('interview-allocation-runs/preview', [InterviewAllocationController::class, 'preview'])->name('interview-allocations.preview');
+            Route::post('interview-allocation-runs/{allocationRun}/commit', [InterviewAllocationController::class, 'commit'])->name('interview-allocations.commit');
             Route::put('interview-assignments/{assignment}', [InterviewController::class, 'adjust'])->name('interviews.adjust');
             Route::put('interview-assignments/{assignment}/attendance', [InterviewController::class, 'attendance'])->name('attendance.store');
             Route::post('interview-assignments/{assignment}/invitation', [InterviewController::class, 'invite'])->name('interviews.invitation.store');

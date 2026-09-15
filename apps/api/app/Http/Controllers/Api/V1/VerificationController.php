@@ -32,11 +32,18 @@ class VerificationController extends Controller
             'application' => [
                 'id' => $application->id,
                 'reference' => $application->reference,
+                'applicant_name' => collect([
+                    $application->applicant->first_name,
+                    $application->applicant->middle_names,
+                    $application->applicant->last_name,
+                ])->filter()->implode(' '),
                 'entered_data' => $application->draft_data,
             ],
             'documents' => $application->documents->map(fn (Document $document): array => [
                 'id' => $document->id,
                 'type' => $document->document_type,
+                'label' => $this->documentLabel($document->document_type),
+                'filename' => $document->original_filename,
                 'version' => $document->version,
                 'preview_url' => route('api.documents.download', $document),
                 'quality' => $document->quality_indicators,
@@ -44,13 +51,21 @@ class VerificationController extends Controller
             ]),
             'comparisons' => DB::table('document_comparisons')->where('application_id', $application->id)->get(),
             'verified_values' => VerifiedValue::query()->whereBelongsTo($application)->where('current', true)->get(),
-            'evidence_matrix' => $fields->groupBy('field_key')->map(fn ($values) => $values->map(fn ($field): array => [
-                'source_id' => $field->document_id,
-                'value' => $field->raw_value,
-                'confidence' => $field->confidence,
-                'page' => $field->page_number,
-                'bounding_polygon' => $field->bounding_polygon === null ? null : json_decode($field->bounding_polygon, true),
-            ])->values()),
+            'evidence_matrix' => $fields->groupBy('field_key')->map(fn ($values) => $values->map(function ($field) use ($application): array {
+                $document = $application->documents->firstWhere('id', $field->document_id);
+
+                return [
+                    'document_id' => $field->document_id,
+                    'source_label' => $document === null
+                        ? 'Supporting document'
+                        : $this->documentLabel($document->document_type).' - version '.$document->version,
+                    'source_filename' => $document?->original_filename,
+                    'value' => $field->raw_value,
+                    'confidence' => $field->confidence,
+                    'page' => $field->page_number,
+                    'bounding_polygon' => $field->bounding_polygon === null ? null : json_decode($field->bounding_polygon, true),
+                ];
+            })->values()),
         ]);
     }
 
@@ -144,5 +159,18 @@ class VerificationController extends Controller
         $audit->record('verification.recorded', $document, actor: $request->user(), after: $data, reason: $data['reason'] ?? null);
 
         return response()->json(['verification' => $verification], 201);
+    }
+
+    private function documentLabel(string $type): string
+    {
+        return match ($type) {
+            'national_id' => 'National ID',
+            'lc1_letter' => 'LC1 letter',
+            'academic_certificate' => 'Academic certificate or result slip',
+            'application_letter' => 'Application letter',
+            'passport_photo' => 'Passport photo',
+            'skill_certificate' => 'Skill certificate',
+            default => str($type)->replace('_', ' ')->title()->toString(),
+        };
     }
 }

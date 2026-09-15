@@ -29,6 +29,7 @@ class ApplicationResource extends JsonResource
                 'code' => $this->post->code,
                 'name' => $this->post->name,
                 'sections' => $this->post->section_configuration,
+                'lc_source_policy' => $this->post->lc_source_policy,
                 'hard_copy_required' => $this->post->hard_copy_required,
             ]),
             'stages' => $this->when(

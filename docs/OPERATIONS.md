@@ -21,6 +21,16 @@ Alert on elevated 5xx/429, queue age, failed jobs, OCR latency/failure, object-s
 
 Run at least one durable `php artisan queue:work --queue=default --tries=5 --backoff=5` process and one scheduler invocation each minute (`php artisan schedule:run`). Stop workers gracefully before image replacement and restart them after deployment.
 
+## Interview allocation runbook
+
+1. Confirm every validated candidate has an LC1-supported routing address. For an `origin_or_residence` post, the application must state whether its LC1 letter supports the place of origin or current residence; submission persists that district as the routing district.
+2. Maintain an effective district-to-centre jurisdiction mapping and active scheduled centre sessions with open panels and sufficient capacity.
+3. In **Operations → Allocate interview candidates**, select the recruitment post and prison region, then create a preview. The server assigns each district as an indivisible unit using the greedy longest-processing-time heuristic: districts are processed by candidate count, largest first, and assigned to the currently least-loaded eligible centre.
+4. Review the version number, candidate total, per-centre loads, and district-to-centre table. Reference-data or candidate changes invalidate the preview fingerprint; generate a new version instead of editing the stored preview.
+5. Commit only an accepted preview. Commit persists interview assignments and queues the existing protected invitation workflow. Once attendance, scoring, or invitation evidence exists, that allocation cannot be replaced through rerun.
+
+The authoritative register is split between `interview_allocation_runs` (version, snapshots, fingerprints and commit evidence) and `interview_allocation_results` (one centre result per district). `interview_assignments.interview_allocation_run_id` provides the causal link from each operational assignment back to its committed run.
+
 ## Backup and restore
 
 - PostgreSQL: encrypted daily full plus WAL/continuous recovery where supported.

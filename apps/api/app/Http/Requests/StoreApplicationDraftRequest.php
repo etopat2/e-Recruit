@@ -49,6 +49,8 @@ class StoreApplicationDraftRequest extends FormRequest
             'draft_data.skills' => ['sometimes', 'array', 'max:30'],
             'draft_data.declarations' => ['sometimes', 'array'],
             'draft_data.declaration' => ['sometimes', 'array'],
+            'draft_data.lc1_letter' => ['sometimes', 'array', 'max:5'],
+            'draft_data.lc1_letter.address_type' => ['nullable', Rule::in(['origin', 'residence'])],
             'entity_version' => ['required', 'integer', 'min:1'],
         ];
 

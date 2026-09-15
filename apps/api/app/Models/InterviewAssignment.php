@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['application_id', 'centre_session_id', 'panel_id', 'assignment_order', 'algorithm_version', 'input_fingerprint', 'manual_adjustment', 'adjustment_reason', 'assigned_by'])]
+#[Fillable(['application_id', 'interview_allocation_run_id', 'centre_session_id', 'panel_id', 'assignment_order', 'algorithm_version', 'input_fingerprint', 'manual_adjustment', 'adjustment_reason', 'assigned_by'])]
 class InterviewAssignment extends Model
 {
     use HasUlids;
@@ -16,6 +16,11 @@ class InterviewAssignment extends Model
     public function application(): BelongsTo
     {
         return $this->belongsTo(Application::class);
+    }
+
+    public function allocationRun(): BelongsTo
+    {
+        return $this->belongsTo(InterviewAllocationRun::class, 'interview_allocation_run_id');
     }
 
     public function panel(): BelongsTo

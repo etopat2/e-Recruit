@@ -33,6 +33,22 @@ return [
             'medical_outcome',
         ],
     ],
+    'hard_copy' => [
+        'default_checklist' => [
+            ['document_type' => 'national_id', 'label' => 'National ID'],
+            ['document_type' => 'application_letter', 'label' => 'Application letter'],
+            ['document_type' => 'lc1_letter', 'label' => 'LC1 letter'],
+            ['document_type' => 'academic_certificate', 'label' => 'S.4 certificate or result slip'],
+            ['document_type' => 'passport_photo', 'label' => 'Passport photo'],
+        ],
+    ],
+    'interview' => [
+        'default_invitation_instructions' => [
+            'Bring this invitation and your National ID.',
+            'Bring the originals of every document submitted with your application.',
+            'Report at the stated centre before the reporting time.',
+        ],
+    ],
     'institution_directory' => [
         'maximum_results' => 7,
         'search_cache_hours' => (int) env('INSTITUTION_SEARCH_CACHE_HOURS', 24),

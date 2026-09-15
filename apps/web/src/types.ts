@@ -18,6 +18,7 @@ export interface CampaignPost {
   name: string
   description: string
   sections: Record<string, { required?: boolean } | boolean>
+  lc_source_policy?: 'origin' | 'residence' | 'origin_or_residence' | 'custom'
   hard_copy_required: boolean
 }
 

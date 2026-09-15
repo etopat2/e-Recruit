@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['applicant_id', 'recruitment_campaign_id', 'recruitment_post_id', 'campaign_version_id', 'reference', 'status', 'active', 'draft_data', 'submission_snapshot', 'submission_fingerprint', 'submission_idempotency_key', 'qr_payload', 'acknowledgement_path', 'submitted_at', 'entity_version', 'assisted_by'])]
+#[Fillable(['applicant_id', 'recruitment_campaign_id', 'recruitment_post_id', 'campaign_version_id', 'reference', 'status', 'routing_address_type', 'routing_district_id', 'active', 'draft_data', 'submission_snapshot', 'submission_fingerprint', 'submission_idempotency_key', 'qr_payload', 'acknowledgement_path', 'submitted_at', 'entity_version', 'assisted_by'])]
 class Application extends Model
 {
     /** @use HasFactory<ApplicationFactory> */
@@ -59,6 +59,11 @@ class Application extends Model
     public function interviewAssignment(): HasOne
     {
         return $this->hasOne(InterviewAssignment::class);
+    }
+
+    public function routingDistrict(): BelongsTo
+    {
+        return $this->belongsTo(AdministrativeUnit::class, 'routing_district_id');
     }
 
     protected function casts(): array

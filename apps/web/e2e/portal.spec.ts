@@ -28,6 +28,39 @@ async function staffSession(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: { user: { id: 7, name: 'Synthetic Officer', email: null, phone: null, user_type: 'panel_member', is_privileged: true, mfa_confirmed: true, scopes: [] } } }))
 }
 
+async function operationsLookups(page: import('@playwright/test').Page) {
+  await page.route('**/api/v1/operations/lookups', async (route) => route.fulfill({ json: { data: {
+    posts: [{ id: 'post-1', label: 'UPS Recruitment 2026 — Recruit Warder', description: 'WARDER' }],
+    regions: [{ id: 'region-1', label: 'Central Prison Region' }],
+    receiving_offices: [{ id: 'centre-1', label: 'Synthetic Centre Registry', description: 'Central Prison Region' }],
+    centre_sessions: [{ id: 'session-1', post_id: 'post-1', label: 'Synthetic Centre — 15 Oct 2026 08:00', description: 'Recruit Warder' }],
+    interview_assignments: [{ id: 'assignment-1', application_id: 'app-1', label: 'Synthetic Applicant — UPS/2026/WRD/000001', description: 'Synthetic Centre • Panel A • 2026-10-15 08:00' }],
+    panels: [{ id: 'panel-1', label: 'Synthetic Centre — Panel A', description: '2026-10-15 • Head: Synthetic Head' }],
+    medical_schedules: [{ id: 'medical-schedule-1', post_id: 'post-1', label: 'Synthetic Medical Centre — 2026-10-20 08:00', description: 'Recruit Warder' }],
+    selection_outcomes: [{ id: 'outcome-1', application_id: 'reserve-app', label: 'Reserve Candidate — UPS/2026/WRD/000002', description: 'Certified selected outcome' }],
+    medical_results: [{ id: 'medical-1', application_id: 'reserve-app', label: 'Reserve Candidate — UPS/2026/WRD/000002', description: 'Fit result' }],
+    final_selections: [{ id: 'final-1', application_id: 'reserve-app', label: 'Reserve Candidate — UPS/2026/WRD/000002', description: 'Approved final selection' }],
+    training_invites: [{ id: 'training-invite-1', application_id: 'reserve-app', label: 'Reserve Candidate — UPS/2026/WRD/000002', description: 'Synthetic Training School • 2026-10-25 08:00' }],
+    selection_runs: [{ id: 'selection-1', label: 'Recruit Warder — certified run 4', description: '2026-10-01' }],
+    replacement_recommendations: [{ id: 'recommendation-1', label: 'Selected Candidate (UPS/2026/WRD/000003)', description: 'Proposed replacement: Reserve Candidate (UPS/2026/WRD/000002)' }],
+  } } }))
+  await page.route('**/api/v1/operations/applications?*', async (route) => {
+    const context = new URL(route.request().url()).searchParams.get('context')
+    const candidate = context === 'replacement'
+      ? { id: 'selected-app', post_id: 'post-1', label: 'Selected Candidate — UPS/2026/WRD/000003', description: 'Status: selected' }
+      : context === 'medical'
+        ? { id: 'reserve-app', post_id: 'post-1', label: 'Reserve Candidate — UPS/2026/WRD/000002', description: 'Status: selected' }
+        : { id: 'app-1', post_id: 'post-1', label: 'Synthetic Applicant — UPS/2026/WRD/000001', description: 'Status: awaiting hard copies', document_requirements: [
+            { document_type: 'national_id', label: 'National ID' },
+            { document_type: 'application_letter', label: 'Application letter' },
+            { document_type: 'lc1_letter', label: 'LC1 letter' },
+            { document_type: 'academic_certificate', label: 'S.4 certificate / result slip' },
+            { document_type: 'passport_photo', label: 'Passport photo' },
+          ] }
+    await route.fulfill({ json: { data: [candidate] } })
+  })
+}
+
 async function technicalAdministratorSession(page: import('@playwright/test').Page) {
   await page.addInitScript(() => localStorage.setItem('ups_auth_token', 'synthetic-technical-admin-token'))
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: { user: { id: 1, name: 'Synthetic Technical Administrator', email: 'system_administrator@example.test', phone: null, user_type: 'system_administrator', status: 'active', is_privileged: true, mfa_confirmed: true, must_change_password: false, scopes: [] } } }))
@@ -319,10 +352,10 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
 test('verification workbench keeps source evidence and accountable decision together', async ({ page }) => {
   await staffSession(page)
   const workbench = {
-    application: { id: 'app-1', reference: 'UPS/2026/WRD/000001', entered_data: { name: 'Synthetic Applicant' } },
-    documents: [{ id: 'doc-1', type: 'national_id', version: 1, preview_url: '/api/v1/documents/doc-1/download', quality: { status: 'review' }, fields: [{ field_key: 'name', raw_value: 'SYNTHETIC APPLICANT', confidence: 0.91, page_number: 1, bounding_polygon: [0, 0, 1, 1] }] }],
+    application: { id: 'app-1', reference: 'UPS/2026/WRD/000001', applicant_name: 'Synthetic Applicant', entered_data: { personal: { full_name: 'Synthetic Applicant', date_of_birth: '2001-05-12' }, origin: { district: 'Kampala', county: 'Kampala City', subcounty: 'Central Division', parish: 'Old Kampala', village: 'Namirembe' }, education: [{ level: 'UCE', institution: 'Synthetic School', result: 'Division 1', completion_year: 2024 }], declaration: { accepted: true } } },
+    documents: [{ id: 'doc-1', type: 'national_id', label: 'National ID', filename: 'synthetic-national-id.pdf', version: 1, preview_url: '/api/v1/documents/doc-1/download', quality: { status: 'review' }, fields: [{ field_key: 'name', raw_value: 'SYNTHETIC APPLICANT', confidence: 0.91, page_number: 1, bounding_polygon: [0, 0, 1, 1] }] }],
     comparisons: [], verified_values: [],
-    evidence_matrix: { name: [{ source_id: 'doc-1', value: 'SYNTHETIC APPLICANT', confidence: 0.91, page: 1, bounding_polygon: { x: 0.1, y: 0.2, width: 0.4, height: 0.05, coordinate_space: 'normalised' } }] },
+    evidence_matrix: { name: [{ document_id: 'doc-1', source_label: 'National ID — version 1', source_filename: 'synthetic-national-id.pdf', value: 'SYNTHETIC APPLICANT', confidence: 0.91, page: 1, bounding_polygon: { x: 0.1, y: 0.2, width: 0.4, height: 0.05, coordinate_space: 'normalised' } }] },
   }
   await page.route('**/api/v1/applications/app-1/verification-workbench', async (route) => route.fulfill({ json: workbench }))
   await page.route('**/api/v1/documents/doc-1/download', async (route) => route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' }))
@@ -330,6 +363,12 @@ test('verification workbench keeps source evidence and accountable decision toge
 
   await page.goto('/staff/verification/app-1')
   await expect(page.getByRole('heading', { name: 'Field-by-field comparison' })).toBeVisible()
+  await expect(page.getByText('Kampala, Kampala City, Central Division, Old Kampala, Namirembe')).toBeVisible()
+  await expect(page.getByText('Yes')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('doc-1')
+  const documentPane = await page.locator('.document-rail').boundingBox()
+  const evidencePane = await page.locator('.evidence-panel').boundingBox()
+  expect(Math.abs(documentPane!.width - evidencePane!.width)).toBeLessThanOrEqual(1)
   const sourceValue = page.getByRole('button', { name: /SYNTHETIC APPLICANT.*Focus original source/i })
   await expect(sourceValue).toBeVisible()
   await sourceValue.click()
@@ -369,44 +408,59 @@ test('submitted applicant sees an auditable status timeline and secure inbox', a
 
 test('hard-copy receiving officer records a traceable physical receipt', async ({ page }) => {
   await staffSession(page)
+  await operationsLookups(page)
   await page.route('**/api/v1/applications/app-1/hard-copy-receipts', async (route) => route.fulfill({ status: 201, json: { receipt: { id: 'receipt-1', receipt_number: 'HC/20260902/SYNTHETIC', status: 'received' } } }))
   await page.goto('/staff/operations')
   await page.getByRole('button', { name: /Record hard-copy receipt/ }).click()
   await expect(page.getByRole('dialog', { name: 'Record hard-copy receipt' })).toBeVisible()
-  await page.getByLabel('Application ID', { exact: true }).first().fill('app-1')
-  await page.getByLabel('Receiving office').fill('Synthetic Centre Registry')
+  await page.getByRole('combobox', { name: /^Application/ }).fill('Synthetic')
+  await page.getByRole('option', { name: /Synthetic Applicant.*UPS\/2026\/WRD\/000001/ }).click()
+  await page.getByRole('combobox', { name: 'Receiving office', exact: true }).fill('Synthetic')
+  await page.getByRole('option', { name: /Synthetic Centre Registry/ }).click()
+  await expect(page.getByRole('checkbox', { name: /National ID received and matches/ })).toBeVisible()
   await page.getByRole('button', { name: 'Record accountable receipt' }).click()
-  await expect(page.getByText('Hard-copy receipt recorded with a traceable receipt number.')).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: 'Hard-copy receipt recorded with a traceable receipt number.' })).toBeVisible()
 })
 
-test('centre coordinator schedules candidates and records interview check-in', async ({ page }) => {
+test('centre coordinator previews district-safe allocation and records interview check-in', async ({ page }) => {
   await staffSession(page)
-  await page.route('**/api/v1/posts/post-1/interview-assignments', async (route) => route.fulfill({ status: 201, json: { input_fingerprint: 'f'.repeat(64), assignments: [{ id: 'assignment-1' }] } }))
+  await operationsLookups(page)
+  const allocation = { id: 'allocation-1', run_number: 1, status: 'preview', candidate_count: 13, post: { name: 'Recruit Warder' }, region: { name: 'Central Prison Region' }, centres: [{ centre_name: 'Synthetic Centre', candidate_count: 13, total_load: 13, capacity: 20 }], districts: [{ district_name: 'Kampala', centre_name: 'Synthetic Centre', candidate_count: 13 }] }
+  await page.route('**/api/v1/interview-allocation-runs/preview', async (route) => route.fulfill({ status: 201, json: { data: allocation } }))
+  await page.route('**/api/v1/interview-allocation-runs/allocation-1/commit', async (route) => route.fulfill({ json: { data: { ...allocation, status: 'committed' } } }))
   await page.route('**/api/v1/interview-assignments/assignment-1/attendance', async (route) => route.fulfill({ json: { attendance: { id: 'attendance-1', status: 'present', entity_version: 1 } } }))
   await page.goto('/staff/operations')
-  await page.getByRole('button', { name: /Schedule candidates/ }).click()
-  await page.getByLabel('Recruitment post ID', { exact: true }).first().fill('post-1')
-  await page.getByLabel('Centre session ID').fill('session-1')
-  await page.getByLabel('Application IDs (comma-separated)').fill('app-1, app-2')
-  await page.getByLabel('Panel IDs (comma-separated)').fill('panel-1')
-  await page.getByRole('button', { name: 'Generate deterministic assignments' }).click()
-  await expect(page.getByText(/Candidates assigned deterministically/)).toBeVisible()
+  await page.getByRole('button', { name: /Allocate interview candidates/ }).click()
+  await page.getByRole('combobox', { name: 'Recruitment post', exact: true }).fill('Warder')
+  await page.getByRole('option', { name: /UPS Recruitment 2026.*Recruit Warder/ }).click()
+  await page.getByRole('combobox', { name: 'Prison region', exact: true }).fill('Central')
+  await page.getByRole('option', { name: 'Central Prison Region', exact: true }).click()
+  await page.getByRole('button', { name: 'Preview district-balanced allocation' }).click()
+  await expect(page.getByRole('heading', { name: 'Allocation version 1' })).toBeVisible()
+  await page.getByText('District allocation (1)').click()
+  await expect(page.getByRole('cell', { name: 'Kampala' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Synthetic Centre' }).last()).toBeVisible()
+  await page.getByRole('button', { name: 'Commit allocation and queue invitations' }).click()
+  await expect(page.locator('.page-alert').filter({ hasText: /invitation generation has been queued/ })).toBeVisible()
   await page.getByRole('button', { name: /Record attendance/ }).click()
-  await page.getByLabel('Interview assignment ID').fill('assignment-1')
+  await page.getByRole('combobox', { name: 'Interview assignment', exact: true }).fill('Synthetic')
+  await page.getByRole('option', { name: /Synthetic Applicant.*UPS\/2026\/WRD\/000001/ }).click()
   await page.getByLabel('Attendance status').selectOption('present')
   await page.getByRole('dialog', { name: 'Record interview attendance' }).getByRole('button', { name: 'Record attendance', exact: true }).click()
-  await expect(page.getByText('Attendance recorded and audited.')).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: 'Attendance recorded and audited.' })).toBeVisible()
 })
 
 test('panel head closes a reconciled session and fingerprints scores', async ({ page }) => {
   await staffSession(page)
+  await operationsLookups(page)
   await page.route('**/api/v1/panels/panel-1/close', async (route) => route.fulfill({ json: { closure: { id: 'closure-1', score_fingerprint: 'c'.repeat(64) } } }))
   await page.goto('/staff/operations')
   await page.getByRole('button', { name: /Close panel/ }).click()
-  await page.getByLabel('Panel ID', { exact: true }).fill('panel-1')
+  await page.getByRole('combobox', { name: 'Panel session', exact: true }).fill('Panel A')
+  await page.getByRole('option', { name: /Synthetic Centre.*Panel A/ }).click()
   await page.getByRole('checkbox', { name: /panel data is complete/i }).check()
   await page.getByRole('button', { name: 'Close and fingerprint panel' }).click()
-  await expect(page.getByText(/Panel closed; submitted scores are now fingerprinted/)).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: /Panel closed; submitted scores are fingerprinted/ })).toBeVisible()
 })
 
 test('HQ runs a reproducible selection scenario and certifies the official draft', async ({ page }) => {
@@ -433,47 +487,56 @@ test('HQ runs a reproducible selection scenario and certifies the official draft
 
 test('medical outcome gates an independently approved strict-order reserve replacement', async ({ page }) => {
   await staffSession(page)
+  await operationsLookups(page)
   await page.route('**/api/v1/medical/results', async (route) => route.fulfill({ status: 201, json: { result: { id: 'medical-1', application_id: 'reserve-app', outcome: 'Fit' } } }))
   await page.route('**/api/v1/training/replacement-recommendations', async (route) => route.fulfill({ status: 201, json: { recommendation: { id: 'recommendation-1', reserve_application_id: 'reserve-app', status: 'pending_approval' } } }))
   await page.route('**/api/v1/training/replacement-recommendations/recommendation-1/decision', async (route) => route.fulfill({ json: { recommendation: { id: 'recommendation-1', status: 'approved' } } }))
   await page.goto('/staff/operations')
   await page.getByRole('button', { name: /Record restricted result/ }).click()
-  await page.getByLabel('Application ID', { exact: true }).fill('reserve-app')
-  await page.getByLabel('Medical schedule ID', { exact: true }).fill('medical-schedule-1')
+  await page.getByRole('combobox', { name: 'Candidate', exact: true }).fill('Reserve')
+  await page.getByRole('option', { name: /Reserve Candidate.*UPS\/2026\/WRD\/000002/ }).click()
+  await page.getByRole('combobox', { name: 'Medical schedule', exact: true }).fill('Synthetic Medical')
+  await page.getByRole('option', { name: /Synthetic Medical Centre/ }).click()
   await page.getByRole('combobox', { name: 'Outcome', exact: true }).selectOption('Fit')
   await page.getByRole('dialog', { name: 'Record restricted medical result' }).getByRole('button', { name: 'Record restricted result', exact: true }).click()
-  await expect(page.getByText(/Restricted medical result recorded/)).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: /Restricted medical result recorded/ })).toBeVisible()
   await page.getByRole('button', { name: /Recommend next reserve/ }).click()
-  await page.getByLabel('Candidate being replaced - application ID').fill('selected-app')
-  await page.getByLabel('Certified selection run ID').fill('selection-1')
+  await page.getByRole('combobox', { name: 'Candidate being replaced', exact: true }).fill('Selected')
+  await page.getByRole('option', { name: /Selected Candidate.*UPS\/2026\/WRD\/000003/ }).click()
+  await page.getByRole('combobox', { name: 'Certified selection run', exact: true }).fill('Warder')
+  await page.getByRole('option', { name: /Recruit Warder.*certified run 4/ }).click()
   await page.getByLabel('Reason', { exact: true }).fill('Synthetic candidate did not report for training intake.')
   await page.getByRole('button', { name: 'Recommend strict-order reserve' }).click()
-  await expect(page.getByText(/recommended for independent approval/)).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: /recommended for independent approval/ })).toBeVisible()
   await page.getByRole('button', { name: /Decide reserve replacement/ }).click()
-  await page.getByLabel('Recommendation ID').fill('recommendation-1')
+  await page.getByRole('combobox', { name: 'Pending recommendation', exact: true }).fill('Selected')
+  await page.getByRole('option', { name: /Selected Candidate.*UPS\/2026\/WRD\/000003/ }).click()
   await page.getByLabel('Decision reason').fill('Independent synthetic review confirms the next reserve candidate.')
   await page.getByLabel('Approval reference', { exact: true }).fill('COUNCIL-SYNTHETIC-2026')
   await page.getByRole('button', { name: 'Record independent decision' }).click()
-  await expect(page.getByText('Reserve replacement approved by an independent authority.')).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: 'Reserve replacement approved by an independent authority.' })).toBeVisible()
 })
 
 test('PATS issues a training invitation and records candidate reporting', async ({ page }) => {
   await staffSession(page)
+  await operationsLookups(page)
   await page.route('**/api/v1/training/invitations', async (route) => route.fulfill({ status: 201, json: { invite: { id: 'training-invite-1', final_selection_id: 'final-1' } } }))
   await page.route('**/api/v1/training/reporting', async (route) => route.fulfill({ status: 201, json: { reporting: { id: 'report-1', status: 'admitted' } } }))
   await page.goto('/staff/operations')
   await page.getByRole('button', { name: /Issue training invitation/ }).click()
-  await page.getByLabel('Final selection ID').fill('final-1')
+  await page.getByRole('combobox', { name: 'Approved candidate', exact: true }).fill('Reserve')
+  await page.getByRole('option', { name: /Reserve Candidate.*UPS\/2026\/WRD\/000002/ }).click()
   await page.getByLabel('Date', { exact: true }).last().fill('2026-10-15')
   await page.getByLabel('Training location').fill('Synthetic Training School')
   await page.getByRole('button', { name: 'Issue protected invitation' }).click()
-  await expect(page.getByText(/Training invitation issued/)).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: /Training invitation issued/ })).toBeVisible()
   await page.getByRole('button', { name: /Record training reporting/ }).click()
-  await page.getByLabel('Training invitation ID').fill('training-invite-1')
+  await page.getByRole('combobox', { name: 'Training invitation', exact: true }).fill('Reserve')
+  await page.getByRole('option', { name: /Reserve Candidate.*UPS\/2026\/WRD\/000002/ }).click()
   await page.getByRole('combobox', { name: 'Status', exact: true }).fill('admitted')
-  await page.getByRole('option', { name: 'admitted', exact: true }).click()
+  await page.getByRole('option', { name: 'Admitted', exact: true }).click()
   await page.getByRole('button', { name: 'Record reporting status' }).click()
-  await expect(page.getByText('Training reporting status recorded and audited.')).toBeVisible()
+  await expect(page.locator('.page-alert').filter({ hasText: 'Training reporting status recorded and audited.' })).toBeVisible()
 })
 
 test('panel user checks in and scores offline, reloads locked, then reconciles once', async ({ page, context }) => {
