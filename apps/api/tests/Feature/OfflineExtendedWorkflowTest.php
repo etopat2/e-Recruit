@@ -44,7 +44,6 @@ class OfflineExtendedWorkflowTest extends TestCase
             'action_type' => 'HARDCOPY_RECEIPT_RECORDED',
             'payload_schema_version' => 1,
             'payload' => [
-                'receiving_office' => 'Kampala Recruitment Centre',
                 'received_at' => now()->toISOString(),
                 'items' => [
                     ['document_type' => 'national_id', 'status' => 'Match'],
@@ -61,7 +60,11 @@ class OfflineExtendedWorkflowTest extends TestCase
         $this->postJson("/api/v1/offline/packages/{$packageId}/sync", ['events' => [$event]])
             ->assertOk()->assertJsonPath('acknowledgements.0.duplicate', true);
 
-        $this->assertDatabaseHas('hard_copy_receipts', ['application_id' => $fixture['application']->id, 'status' => 'query_required']);
+        $this->assertDatabaseHas('hard_copy_receipts', [
+            'application_id' => $fixture['application']->id,
+            'receiving_office' => 'Uganda Prisons Service Headquarters',
+            'status' => 'query_required',
+        ]);
         $this->assertDatabaseHas('physical_document_checks', ['document_type' => 'academic_certificate', 'status' => 'Unreadable']);
         $this->assertDatabaseHas('applications', ['id' => $fixture['application']->id, 'status' => 'hard_copies_received', 'entity_version' => 2]);
 
@@ -90,6 +93,25 @@ class OfflineExtendedWorkflowTest extends TestCase
         foreach (['score_capture', 'attendance', 'hard_copy', 'verification', 'medical', 'panel_closure'] as $packType) {
             $this->getJson("/api/v1/offline/reference-options?pack_type={$packType}")->assertOk();
         }
+    }
+
+    public function test_transmission_roles_cannot_search_for_or_issue_hard_copy_reception_packs(): void
+    {
+        $fixture = $this->recruitmentFixture(['status' => 'awaiting_hard_copies', 'reference' => 'UPS/TEST/000003']);
+        $regionalOfficer = User::factory()->create(['user_type' => 'regional_recruitment_officer']);
+        $regionalOfficer->scopes()->create(['scope_type' => 'campaign', 'scope_id' => $fixture['campaign']->id, 'allowed_tasks' => ['*']]);
+        $deviceId = $this->device($regionalOfficer);
+        Sanctum::actingAs($regionalOfficer);
+
+        $this->getJson('/api/v1/offline/reference-options?pack_type=hard_copy&search='.$fixture['application']->reference)
+            ->assertForbidden();
+        $this->postJson('/api/v1/offline/packages', [
+            'registered_device_id' => $deviceId,
+            'pack_type' => 'hard_copy',
+            'scope' => ['campaign_id' => $fixture['campaign']->id],
+            'permitted_actions' => ['HARDCOPY_RECEIPT_RECORDED'],
+            'entity_ids' => [$fixture['application']->id],
+        ])->assertForbidden();
     }
 
     public function test_verification_pack_merges_independent_fields_and_conflicts_on_the_same_field(): void

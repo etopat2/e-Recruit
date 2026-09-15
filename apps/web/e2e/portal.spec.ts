@@ -23,16 +23,16 @@ test('applicant access form supports keyboard-sized mobile viewport', async ({ p
   await expect(page.getByLabel('National ID number')).toBeVisible()
 })
 
-async function staffSession(page: import('@playwright/test').Page) {
+async function staffSession(page: import('@playwright/test').Page, userType = 'panel_member') {
   await page.addInitScript(() => localStorage.setItem('ups_auth_token', 'synthetic-staff-token'))
-  await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: { user: { id: 7, name: 'Synthetic Officer', email: null, phone: null, user_type: 'panel_member', is_privileged: true, mfa_confirmed: true, scopes: [] } } }))
+  await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: { user: { id: 7, name: 'Synthetic Officer', email: null, phone: null, user_type: userType, is_privileged: true, mfa_confirmed: true, scopes: [] } } }))
 }
 
 async function operationsLookups(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/operations/lookups', async (route) => route.fulfill({ json: { data: {
     posts: [{ id: 'post-1', label: 'UPS Recruitment 2026 — Recruit Warder', description: 'WARDER' }],
     regions: [{ id: 'region-1', label: 'Central Prison Region' }],
-    receiving_offices: [{ id: 'centre-1', label: 'Synthetic Centre Registry', description: 'Central Prison Region' }],
+    hard_copy: { can_receive: true, receiving_point: 'Uganda Prisons Service Headquarters', transmission_notice: 'Units and regions are transmission channels only; final receipt is recorded at headquarters.' },
     centre_sessions: [{ id: 'session-1', post_id: 'post-1', label: 'Synthetic Centre — 15 Oct 2026 08:00', description: 'Recruit Warder' }],
     interview_assignments: [{ id: 'assignment-1', application_id: 'app-1', label: 'Synthetic Applicant — UPS/2026/WRD/000001', description: 'Synthetic Centre • Panel A • 2026-10-15 08:00' }],
     panels: [{ id: 'panel-1', label: 'Synthetic Centre — Panel A', description: '2026-10-15 • Head: Synthetic Head' }],
@@ -417,17 +417,20 @@ test('submitted applicant sees an auditable status timeline and secure inbox', a
   expect(results.violations.filter((violation) => ['critical', 'serious'].includes(violation.impact || ''))).toEqual([])
 })
 
-test('hard-copy receiving officer records a traceable physical receipt', async ({ page }) => {
-  await staffSession(page)
+test('headquarters hard-copy clerk records a traceable physical receipt', async ({ page }) => {
+  await staffSession(page, 'hard_copy_receiving_officer')
   await operationsLookups(page)
-  await page.route('**/api/v1/applications/app-1/hard-copy-receipts', async (route) => route.fulfill({ status: 201, json: { receipt: { id: 'receipt-1', receipt_number: 'HC/20260902/SYNTHETIC', status: 'received' } } }))
+  await page.route('**/api/v1/applications/app-1/hard-copy-receipts', async (route) => {
+    expect(route.request().postDataJSON()).not.toHaveProperty('receiving_office')
+    await route.fulfill({ status: 201, json: { receipt: { id: 'receipt-1', receipt_number: 'HC/20260902/SYNTHETIC', status: 'received' } } })
+  })
   await page.goto('/staff/operations')
-  await page.getByRole('button', { name: /Record hard-copy receipt/ }).click()
+  await page.getByRole('button', { name: /Record headquarters hard-copy receipt/ }).click()
   await expect(page.getByRole('dialog', { name: 'Record hard-copy receipt' })).toBeVisible()
   await page.getByRole('combobox', { name: /^Application/ }).fill('Synthetic')
   await page.getByRole('option', { name: /Synthetic Applicant.*UPS\/2026\/WRD\/000001/ }).click()
-  await page.getByRole('combobox', { name: 'Receiving office', exact: true }).fill('Synthetic')
-  await page.getByRole('option', { name: /Synthetic Centre Registry/ }).click()
+  await expect(page.getByText(/Uganda Prisons Service Headquarters/)).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Receiving office', exact: true })).toHaveCount(0)
   await expect(page.getByRole('checkbox', { name: /National ID received and matches/ })).toBeVisible()
   await page.getByRole('button', { name: 'Record accountable receipt' }).click()
   await expect(page.locator('.page-alert').filter({ hasText: 'Hard-copy receipt recorded with a traceable receipt number.' })).toBeVisible()

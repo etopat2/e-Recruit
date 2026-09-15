@@ -69,6 +69,6 @@ async function begin(campaignId: string, postId: string) {
 
   <section class="steps-section" aria-labelledby="how-heading">
     <p class="eyebrow">What to expect</p><h2 id="how-heading">Your recruitment journey</h2>
-    <ol class="step-grid"><li><span>01</span><h3>Apply online</h3><p>Save progress and upload clear evidence.</p></li><li><span>02</span><h3>Submit originals</h3><p>Follow the campaign’s hard-copy instructions.</p></li><li><span>03</span><h3>Attend assessments</h3><p>Receive schedules and status updates in the portal.</p></li><li><span>04</span><h3>Track the outcome</h3><p>Review decisions, notices, and appeal options.</p></li></ol>
+    <ol class="step-grid"><li><span>01</span><h3>Apply online</h3><p>Save progress and upload clear evidence.</p></li><li><span>02</span><h3>Submit originals</h3><p>Follow instructions for final receipt at UPS Headquarters.</p></li><li><span>03</span><h3>Attend assessments</h3><p>Receive schedules and status updates in the portal.</p></li><li><span>04</span><h3>Track the outcome</h3><p>Review decisions, notices, and appeal options.</p></li></ol>
   </section>
 </template>

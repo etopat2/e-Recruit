@@ -19,7 +19,7 @@ interface LookupRecord {
 interface OperationsLookups {
   posts: LookupRecord[]
   regions: LookupRecord[]
-  receiving_offices: LookupRecord[]
+  hard_copy: { can_receive: boolean; receiving_point: string; transmission_notice: string }
   centre_sessions: LookupRecord[]
   interview_assignments: LookupRecord[]
   panels: LookupRecord[]
@@ -46,7 +46,7 @@ interface AllocationRun {
 type OperationalAction = 'hard-copy' | 'schedule' | 'attendance' | 'panel' | 'medical-schedule' | 'medical-result' | 'final-selection' | 'training-invite' | 'training-report' | 'replacement' | 'replacement-decision'
 
 const emptyLookups = (): OperationsLookups => ({
-  posts: [], regions: [], receiving_offices: [], centre_sessions: [], interview_assignments: [], panels: [],
+  posts: [], regions: [], hard_copy: { can_receive: false, receiving_point: 'Uganda Prisons Service Headquarters', transmission_notice: 'Units and regions are transmission channels only; final receipt is recorded at headquarters.' }, centre_sessions: [], interview_assignments: [], panels: [],
   medical_schedules: [], selection_outcomes: [], medical_results: [], final_selections: [], training_invites: [],
   selection_runs: [], replacement_recommendations: [],
 })
@@ -65,7 +65,7 @@ const actionTitles: Record<OperationalAction, string> = {
 }
 const activeActionTitle = computed(() => activeAction.value ? actionTitles[activeAction.value] : 'Operational action')
 
-const hardCopy = reactive({ application_id: '', application_label: '', receiving_office: '', receiving_office_label: '', received_at: new Date().toISOString().slice(0, 16), notes: '', items: [] as Array<{ document_type: string; label: string; present: boolean }> })
+const hardCopy = reactive({ application_id: '', application_label: '', received_at: new Date().toISOString().slice(0, 16), notes: '', items: [] as Array<{ document_type: string; label: string; present: boolean }> })
 const scheduling = reactive({ post_id: '', post_label: '', region_id: '', region_label: '' })
 const attendance = reactive({ assignment_id: '', assignment_label: '', status: 'present', exception_reason: '' })
 const panel = reactive({ panel_id: '', panel_label: '', confirmation: false })
@@ -84,7 +84,6 @@ const trainingStatusOptions: ComboboxOption[] = trainingStatuses.map((status) =>
 const options = (items: LookupRecord[]): ComboboxOption[] => items.map((item) => ({ value: item.id, label: item.label, description: item.description, data: item }))
 const postOptions = computed(() => options(lookups.posts))
 const regionOptions = computed(() => options(lookups.regions))
-const officeOptions = computed(() => options(lookups.receiving_offices))
 const assignmentOptions = computed(() => options(lookups.interview_assignments))
 const panelOptions = computed(() => options(lookups.panels))
 const medicalScheduleOptions = computed(() => options(lookups.medical_schedules.filter((item) => !selectedMedicalApplicationPost.value || !item.post_id || item.post_id === selectedMedicalApplicationPost.value)))
@@ -161,7 +160,6 @@ function chooseHardCopyApplication(option: ComboboxOption): void {
 
 function recordHardCopy(): Promise<void> {
   return act('hard-copy', `/applications/${hardCopy.application_id}/hard-copy-receipts`, 'POST', {
-    receiving_office: hardCopy.receiving_office_label,
     received_at: new Date(hardCopy.received_at).toISOString(),
     notes: hardCopy.notes || undefined,
     items: hardCopy.items.map((item) => ({ document_type: item.document_type, status: item.present ? 'Match' : 'Missing' })),
@@ -194,11 +192,11 @@ function removeInstruction(index: number): void { if (trainingInvite.instruction
 </script>
 
 <template>
-  <section class="page-heading"><p class="eyebrow">Controlled recruitment operations</p><h1>Centre, medical, and training workflows</h1><p>Search approved registers by human-readable candidate, campaign, centre, and panel details. Internal record keys are retained by the system.</p></section>
+  <section class="page-heading"><p class="eyebrow">Controlled recruitment operations</p><h1>Headquarters, centre, medical, and training workflows</h1><p>Search approved registers by human-readable candidate, campaign, centre, and panel details. Internal record keys are retained by the system.</p></section>
   <FormAlert v-if="notice" kind="success" :message="notice" page /><FormAlert v-if="error && !activeAction" kind="error" :message="error" page />
   <section v-if="loadingLookups" class="content-section"><LoadingIndicator label="Loading authorised operational registers…" /></section>
   <template v-else>
-    <section class="content-section compact-top"><div class="section-heading"><div><p class="eyebrow">Before interview</p><h2>Hard copies and scheduling</h2></div></div><div class="action-launcher-grid"><button type="button" class="action-launcher" @click="openAction('hard-copy')"><strong>Record hard-copy receipt</strong><span>Capture accountable document reception.</span></button><button type="button" class="action-launcher" @click="openAction('schedule')"><strong>Allocate interview candidates</strong><span>Preview a district-preserving, load-balanced allocation.</span></button></div></section>
+    <section class="content-section compact-top"><div class="section-heading"><div><p class="eyebrow">Before interview</p><h2>Headquarters receipt and scheduling</h2><p>{{ lookups.hard_copy.transmission_notice }}</p></div></div><div class="action-launcher-grid"><button v-if="lookups.hard_copy.can_receive" type="button" class="action-launcher" @click="openAction('hard-copy')"><strong>Record headquarters hard-copy receipt</strong><span>Capture accountable reception by an authorised headquarters clerk.</span></button><button type="button" class="action-launcher" @click="openAction('schedule')"><strong>Allocate interview candidates</strong><span>Preview a district-preserving, load-balanced allocation.</span></button></div></section>
     <section class="content-section"><div class="section-heading"><div><p class="eyebrow">Interview centre</p><h2>Attendance and panel closure</h2></div></div><div class="action-launcher-grid"><button type="button" class="action-launcher" @click="openAction('attendance')"><strong>Record attendance</strong><span>Update one approved interview assignment.</span></button><button type="button" class="action-launcher danger-zone" @click="openAction('panel')"><strong>Close panel session</strong><span>Reconcile, fingerprint, and make submitted scores immutable.</span></button></div></section>
     <section class="content-section"><div class="section-heading"><div><p class="eyebrow">Restricted stage</p><h2>Medical and final approval</h2></div></div><div class="action-launcher-grid"><button type="button" class="action-launcher" @click="openAction('medical-schedule')"><strong>Create medical schedule</strong><span>Configure an authorised facility and capacity.</span></button><button type="button" class="action-launcher" @click="openAction('medical-result')"><strong>Record restricted result</strong><span>Capture role-restricted medical evidence.</span></button><button type="button" class="action-launcher danger-zone" @click="openAction('final-selection')"><strong>Approve final selection</strong><span>Confirm certified selection and Fit medical gates.</span></button></div></section>
     <section class="content-section"><div class="section-heading"><div><p class="eyebrow">Training intake</p><h2>Invitation, reporting, and reserve control</h2></div></div><div class="action-launcher-grid"><button type="button" class="action-launcher" @click="openAction('training-invite')"><strong>Issue training invitation</strong><span>Create the protected reporting artifact.</span></button><button type="button" class="action-launcher" @click="openAction('training-report')"><strong>Record training reporting</strong><span>Update the invitation’s intake status.</span></button><button type="button" class="action-launcher" @click="openAction('replacement')"><strong>Recommend next reserve</strong><span>Follow the certified reserve order.</span></button><button type="button" class="action-launcher danger-zone" @click="openAction('replacement-decision')"><strong>Decide reserve replacement</strong><span>Record independent approval or rejection.</span></button></div></section>
@@ -208,11 +206,11 @@ function removeInstruction(index: number): void { if (trainingInvite.instruction
     <FormAlert v-if="error" kind="error" :message="error" />
     <form v-if="activeAction === 'hard-copy'" @submit.prevent="recordHardCopy">
       <FloatingCombobox label="Application" :model-value="hardCopy.application_label" :load-options="(query, signal) => loadApplications(query, 'hard_copy', signal)" :min-chars="2" required placeholder="Search name, NIN, or application reference" hint="Enter at least two characters." @update:model-value="clearSelection(hardCopy, 'application_id', 'application_label', $event)" @select="chooseHardCopyApplication" />
-      <FloatingCombobox label="Receiving office" :model-value="hardCopy.receiving_office_label" :options="officeOptions" required placeholder="Search active recruitment centres" @update:model-value="clearSelection(hardCopy, 'receiving_office', 'receiving_office_label', $event)" @select="recordSelection(hardCopy, 'receiving_office', 'receiving_office_label', $event)" />
+      <p class="notice"><strong>Final receiving point</strong><br />{{ lookups.hard_copy.receiving_point }}. Units, regions, interview centres, and panels cannot record receipt.</p>
       <label>Received at<input v-model="hardCopy.received_at" type="datetime-local" required /></label>
       <fieldset v-if="hardCopy.items.length" class="checklist"><legend>Required hard-copy documents</legend><label v-for="item in hardCopy.items" :key="item.document_type" class="checkbox"><input v-model="item.present" type="checkbox" /><span>{{ item.label }} received and matches</span></label><small>Unchecked documents are recorded as missing for follow-up.</small></fieldset>
       <p v-else-if="hardCopy.application_id" class="field-help">No hard-copy requirements were configured for this application.</p>
-      <label>Receipt notes<textarea v-model="hardCopy.notes" /></label><button class="button primary full" :disabled="busy === 'hard-copy' || !hardCopy.application_id || !hardCopy.receiving_office"><LoadingIndicator v-if="busy === 'hard-copy'" small label="Recording…" /><span v-else>Record accountable receipt</span></button>
+      <label>Receipt notes<textarea v-model="hardCopy.notes" /></label><button class="button primary full" :disabled="busy === 'hard-copy' || !hardCopy.application_id"><LoadingIndicator v-if="busy === 'hard-copy'" small label="Recording…" /><span v-else>Record accountable receipt</span></button>
     </form>
     <form v-else-if="activeAction === 'schedule'" @submit.prevent="allocationPreview ? commitAllocation() : previewAllocation()">
       <FloatingCombobox label="Recruitment post" :model-value="scheduling.post_label" :options="postOptions" required placeholder="Search active campaign posts" @update:model-value="clearSelection(scheduling, 'post_id', 'post_label', $event); allocationPreview = null" @select="recordSelection(scheduling, 'post_id', 'post_label', $event); allocationPreview = null" />

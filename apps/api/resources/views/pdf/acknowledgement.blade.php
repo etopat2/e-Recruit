@@ -32,7 +32,7 @@
     <tr><td class="label">Submitted</td><td>{{ $application->submitted_at?->timezone('Africa/Kampala')->format('d M Y H:i') }}</td></tr>
 </table>
 @if ($application->post->hard_copy_required)
-<div class="notice"><strong>Hard-copy action required:</strong> Write the application reference shown above clearly on top of your physical application letter and submit the configured hard-copy documents to an approved UPS receiving point before the campaign deadline. Online submission does not replace this step.</div>
+<div class="notice"><strong>Hard-copy action required:</strong> Write the application reference shown above clearly on top of your physical application letter and submit the configured hard-copy documents for final receipt at Uganda Prisons Service Headquarters before the campaign deadline. Units and regions may transmit the packet, but it is recorded as received only by an authorised headquarters clerk. Online submission does not replace this step.</div>
 @endif
 <div class="qr"><img src="{{ $qrDataUri }}" alt="Application verification QR code"><br>Scan to verify this acknowledgement reference.</div>
 <div class="footer">System generated. It does not contain an official signature and does not by itself guarantee eligibility or selection.</div>

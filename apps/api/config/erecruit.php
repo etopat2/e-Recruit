@@ -34,6 +34,7 @@ return [
         ],
     ],
     'hard_copy' => [
+        'receiving_point' => 'Uganda Prisons Service Headquarters',
         'default_checklist' => [
             ['document_type' => 'national_id', 'label' => 'National ID'],
             ['document_type' => 'application_letter', 'label' => 'Application letter'],

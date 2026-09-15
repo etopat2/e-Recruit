@@ -32,6 +32,9 @@ class OfflineSyncController extends Controller
             'pack_type' => ['required', 'in:score_capture,attendance,hard_copy,verification,medical,panel_closure'],
             'search' => ['nullable', 'string', 'max:120'],
         ]);
+        if ($data['pack_type'] === 'hard_copy') {
+            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may search reception-pack records.');
+        }
         $search = Str::lower(trim((string) ($data['search'] ?? '')));
 
         $rows = match ($data['pack_type']) {
@@ -117,7 +120,7 @@ class OfflineSyncController extends Controller
                     && (! $request->user()->hasRole('panel_member') || (int) $row->assessor_id === (int) $request->user()->id),
                 'attendance' => $request->user()->hasRole('attendance_officer', 'centre_coordinator', 'panel_head')
                     && $scopeAuthorizer->canPerform($request->user(), 'decision:attendance', $application),
-                'hard_copy' => $request->user()->hasRole('hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer')
+                'hard_copy' => $request->user()->hasRole('hard_copy_receiving_officer')
                     && $scopeAuthorizer->canViewApplication($request->user(), $application),
                 'verification' => $request->user()->hasRole('verification_officer', 'data_clerk')
                     && $scopeAuthorizer->canPerform($request->user(), 'decision:verification', $application),
@@ -207,6 +210,9 @@ class OfflineSyncController extends Controller
             'panel_closure' => ['panel', 'PANEL_CLOSED'],
         ];
         [$entityType, $expectedAction] = $packDefinitions[$data['pack_type']];
+        if ($data['pack_type'] === 'hard_copy') {
+            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may issue a reception pack.');
+        }
         abort_if(collect($data['permitted_actions'])->contains(fn (string $action): bool => $action !== $expectedAction), 422, 'The requested action does not match the pack type.');
 
         $serverRecords = [];
@@ -502,7 +508,7 @@ class OfflineSyncController extends Controller
             ]];
         }
         if ($packType === 'hard_copy') {
-            abort_unless($request->user()->hasRole('hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer'), 403);
+            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may access a reception pack.');
             $application = Application::query()->with('applicant')->find($entityId);
             abort_if($application === null, 422, 'A requested application was not found.');
             abort_unless($scopeAuthorizer->canViewApplication($request->user(), $application), 403);
@@ -511,6 +517,7 @@ class OfflineSyncController extends Controller
             return ['entity_type' => 'application', 'entity_id' => $application->id, 'server_version' => $application->entity_version, 'payload' => [
                 'application_reference' => $application->reference,
                 'candidate_name' => trim($application->applicant->first_name.' '.$application->applicant->last_name),
+                'receiving_point' => config('erecruit.hard_copy.receiving_point'),
                 'status' => $application->status,
                 'document_requirements' => $requirements,
             ]];

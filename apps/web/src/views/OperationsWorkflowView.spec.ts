@@ -1,14 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearApiCache } from '../lib/api'
 import OperationsWorkflowView from './OperationsWorkflowView.vue'
 
 const emptyLookups = {
-  posts: [], regions: [], receiving_offices: [{ id: 'centre-private-key', label: 'Kampala Recruitment Centre', description: 'Kampala Region' }],
+  posts: [], regions: [], hard_copy: { can_receive: true, receiving_point: 'Uganda Prisons Service Headquarters', transmission_notice: 'Units and regions are transmission channels only; final receipt is recorded at headquarters.' },
   centre_sessions: [], interview_assignments: [], panels: [], medical_schedules: [], selection_outcomes: [],
   medical_results: [], final_selections: [], training_invites: [], selection_runs: [], replacement_recommendations: [],
 }
 
 beforeEach(() => {
+  clearApiCache()
+  emptyLookups.hard_copy.can_receive = true
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const data = String(input).includes('/operations/applications') ? [{
       id: 'private-application-key',
@@ -37,7 +40,7 @@ describe('OperationsWorkflowView', () => {
     expect(document.querySelector('form')).not.toBeInTheDocument()
     render(OperationsWorkflowView)
 
-    const trigger = await screen.findByRole('button', { name: /Record hard-copy receipt/i })
+    const trigger = await screen.findByRole('button', { name: /Record headquarters hard-copy receipt/i })
     trigger.focus()
     await fireEvent.click(trigger)
     const dialog = await screen.findByRole('dialog', { name: 'Record hard-copy receipt' })
@@ -49,9 +52,19 @@ describe('OperationsWorkflowView', () => {
     await fireEvent.click(await screen.findByRole('option', { name: /Amina Nabirye/i }))
     expect(screen.getByRole('group', { name: 'Required hard-copy documents' }).querySelectorAll('input[type="checkbox"]')).toHaveLength(6)
     expect(screen.getByText(/Skill certificate\(s\) received and matches/i)).toBeInTheDocument()
+    expect(screen.getByText(/Uganda Prisons Service Headquarters/)).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Receiving office' })).not.toBeInTheDocument()
 
     await fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+  })
+
+  it('treats units and regions as transmission channels without a receipt action', async () => {
+    emptyLookups.hard_copy.can_receive = false
+    render(OperationsWorkflowView)
+
+    expect(await screen.findByText(/Units and regions are transmission channels only/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Record headquarters hard-copy receipt/i })).not.toBeInTheDocument()
   })
 })

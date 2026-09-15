@@ -364,13 +364,14 @@ Use separate browser profiles for independent actors and use only synthetic iden
 2. Applicant: register, search and select a village to auto-populate its full administrative address, repeat using the district-down cascading selectors, save/resume a draft, upload allowed documents, review, submit, download acknowledgement, view status/inbox, and create a helpdesk ticket.
 3. HQ administrator: configure/clone/publish a campaign, create/edit/deactivate/delete unreferenced administrative units at every hierarchy level, confirm referenced units cannot be deleted, import geography, create schedules, run selection scenarios, and inspect operational reports.
 4. Verification officer: focus the protected original and OCR source highlight, compare evidence, and record a reasoned versioned decision.
-5. Panel head: enrol MFA, record/aggregate scoring, reconcile offline work, close the panel, and confirm post-close immutability.
-6. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.
-7. Auditor: enrol MFA, verify the audit hash chain, inspect integrity flags, and confirm decision actions remain forbidden.
-8. Offline field mode: issue a scoped pack, choose a local PIN, reload to verify it locks, sync idempotently, and resolve a protected-field conflict with an independent authorised account.
-9. Confirm messages appear in Mailpit and private documents cannot be opened without a valid authenticated API token.
+5. Headquarters hard-copy clerk: create a named account with the `Headquarters Hard-copy Clerk` role and an approved campaign or national scope, search a submitted application, record its checklist, and confirm the receiving point is fixed as Uganda Prisons Service Headquarters. Repeat with regional, centre, panel, and data-clerk accounts and confirm none can search or record final receipt.
+6. Panel head: enrol MFA, record/aggregate scoring, reconcile offline work, close the panel, and confirm post-close immutability.
+7. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.
+8. Auditor: enrol MFA, verify the audit hash chain, inspect integrity flags, and confirm decision actions remain forbidden.
+9. Offline field mode: issue a scoped pack, choose a local PIN, reload to verify it locks, sync idempotently, and resolve a protected-field conflict with an independent authorised account.
+10. Confirm messages appear in Mailpit and private documents cannot be opened without a valid authenticated API token.
 
-The six demo accounts do not represent every operational role. Tests for hard-copy receiving, attendance, Council approval, training-school processing and other roles use isolated factories. Create additional named staff accounts through the audited technical administration screen; do not assign several human testers to one shared credential.
+The six demo accounts do not represent every operational role. Tests for headquarters hard-copy receipt, attendance, Council approval, training-school processing and other roles use isolated factories. Create additional named staff accounts through the audited technical administration screen; do not assign several human testers to one shared credential.
 
 ## 8. Production configuration
 

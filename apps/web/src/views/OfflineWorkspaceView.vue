@@ -6,6 +6,7 @@ import FormAlert from '../components/FormAlert.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { api, jsonBody } from '../lib/api'
 import { configureOfflineUnlock, getOfflinePackage, lockOfflineData, offlineDb, offlineUnlockState, openOfflineValue, putOfflinePackage, sealOfflineValue, unlockOfflineData, type OfflineEvent } from '../offline/database'
+import { useSessionStore } from '../stores/session'
 
 type PackType = 'score_capture' | 'attendance' | 'hard_copy' | 'verification' | 'medical' | 'panel_closure'
 interface PackRecord { entity_type: string; entity_id: string; server_version: number; payload: Record<string, unknown> }
@@ -23,6 +24,10 @@ const definitions: Record<PackType, { label: string; action: string; entityType:
   medical: { label: 'Medical results', action: 'MEDICAL_RESULT_RECORDED', entityType: 'application' },
   panel_closure: { label: 'Panel closure', action: 'PANEL_CLOSED', entityType: 'panel' },
 }
+const session = useSessionStore()
+const selectableDefinitions = computed(() => (Object.entries(definitions) as Array<[PackType, { label: string; action: string; entityType: string }]>).filter(
+  ([packType]) => packType !== 'hard_copy' || session.user?.user_type === 'hard_copy_receiving_officer',
+))
 
 const deviceId = ref(localStorage.getItem('ups_device_id') || crypto.randomUUID())
 const deviceRecordId = ref(localStorage.getItem('ups_device_record_id') || '')
@@ -39,7 +44,7 @@ const provision = reactive({ packType: 'score_capture' as PackType, search: '', 
 const medicalSchedules = ref<ReferenceOption[]>([])
 const hardCopyItems = ref<HardCopyItem[]>([])
 const capture = reactive({
-  entityId: '', score: 0, notes: '', attendanceStatus: 'present', receivingOffice: '', receivedAt: new Date().toISOString().slice(0, 16),
+  entityId: '', score: 0, notes: '', attendanceStatus: 'present', receivedAt: new Date().toISOString().slice(0, 16),
   fieldKey: '', verificationAction: 'verify', verificationOutcome: 'VERIFIED/CONSISTENT', verifiedValue: '', medicalOutcome: 'Fit', clinicalReference: '', confirmation: false,
 })
 const activeEvents = computed(() => events.value.filter((event) => event.packageId === packageId.value))
@@ -60,7 +65,7 @@ const extractedFieldOptions = computed<ComboboxOption[]>(() => {
 const snapshotRows = computed(() => selectedRecord.value ? structuredRows(selectedRecord.value.payload) : [])
 const captureReady = computed(() => {
   if (!packageId.value || !selectedRecord.value) return false
-  if (definition.value.action === 'HARDCOPY_RECEIPT_RECORDED') return Boolean(capture.receivingOffice.trim() && capture.receivedAt && hardCopyItems.value.length)
+  if (definition.value.action === 'HARDCOPY_RECEIPT_RECORDED') return Boolean(capture.receivedAt && hardCopyItems.value.length)
   if (definition.value.action === 'DOCUMENT_VERIFICATION_RECORDED') return Boolean(capture.fieldKey && (!['verify', 'correct'].includes(capture.verificationAction) || capture.verifiedValue !== '') && (capture.verificationAction === 'verify' || capture.notes.trim()))
   if (definition.value.action === 'PANEL_CLOSED') return capture.confirmation
   return true
@@ -227,7 +232,7 @@ function eventPayload(): Record<string, unknown> {
   switch (definition.value.action) {
     case 'ASSESSMENT_SCORE_RECORDED': return { score: capture.score, notes: capture.notes || undefined }
     case 'ATTENDANCE_RECORDED': return { status: capture.attendanceStatus, notes: capture.notes || undefined }
-    case 'HARDCOPY_RECEIPT_RECORDED': return { receiving_office: capture.receivingOffice, received_at: new Date(capture.receivedAt).toISOString(), notes: capture.notes || undefined, items: hardCopyItems.value.map(({ document_type, status, notes }) => ({ document_type, status, notes: notes || undefined })) }
+    case 'HARDCOPY_RECEIPT_RECORDED': return { received_at: new Date(capture.receivedAt).toISOString(), notes: capture.notes || undefined, items: hardCopyItems.value.map(({ document_type, status, notes }) => ({ document_type, status, notes: notes || undefined })) }
     case 'DOCUMENT_VERIFICATION_RECORDED': return { field_key: capture.fieldKey, action: capture.verificationAction, outcome: capture.verificationOutcome, verified_value: capture.verifiedValue, evidence_references: [capture.entityId], reason: capture.notes || undefined }
     case 'MEDICAL_RESULT_RECORDED': return { outcome: capture.medicalOutcome, restricted_notes: capture.notes || undefined, clinical_reference: capture.clinicalReference || undefined }
     default: return { confirmation: capture.confirmation }
@@ -344,7 +349,7 @@ async function purgePack(message: string) {
         <p class="notice"><strong>Browser field device</strong><br />A protected device identity is ready and remains hidden from operators.</p>
         <button v-if="!deviceRecordId" class="button secondary" @click="register">Register this device</button>
         <template v-else-if="!packageId">
-          <label>Pack purpose<select v-model="provision.packType"><option v-for="(item, key) in definitions" :key="key" :value="key">{{ item.label }}</option></select></label>
+          <label>Pack purpose<select v-model="provision.packType"><option v-for="[key, item] in selectableDefinitions" :key="key" :value="key">{{ item.label }}</option></select></label>
           <FloatingCombobox label="Records to include" :model-value="provision.search" :load-options="loadReferenceOptions" placeholder="Search by candidate, application reference, panel, or document" @update:model-value="provision.search = $event" @select="chooseProvisionRecord" />
           <div v-if="provision.selected.length" class="notice"><strong>Selected records</strong><ul><li v-for="option in provision.selected" :key="option.value"><span>{{ option.label }}</span> <button type="button" class="text-button danger" @click="removeProvisionRecord(option.value)">Remove</button></li></ul></div>
           <FloatingCombobox v-if="provision.packType === 'medical'" label="Medical schedule" :model-value="provision.medicalScheduleLabel" :options="medicalScheduleOptions" required placeholder="Select the matching facility and date" @update:model-value="provision.medicalScheduleId = ''; provision.medicalScheduleLabel = $event" @select="chooseMedicalSchedule" />
@@ -363,7 +368,7 @@ async function purgePack(message: string) {
         <FloatingCombobox label="Pack record" :model-value="selectedRecordName" :options="packRecordOptions" :disabled="!packageId" placeholder="Search or select scoped record" @update:model-value="capture.entityId = ''" @select="capture.entityId = $event.value" />
         <div v-if="definition.action === 'ASSESSMENT_SCORE_RECORDED'" class="field-grid"><label>Score<input v-model="capture.score" type="number" min="0" :max="Number(selectedRecord?.payload.maximum_mark || 100)" /></label><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'ATTENDANCE_RECORDED'" class="field-grid"><label>Status<select v-model="capture.attendanceStatus"><option v-for="status in ['present','late','absent','referred','disqualified','excused','no_show']" :key="status">{{ status }}</option></select></label><label class="wide">Exception notes<textarea v-model="capture.notes" /></label></div>
-        <div v-else-if="definition.action === 'HARDCOPY_RECEIPT_RECORDED'" class="field-grid"><label>Receiving office<input v-model="capture.receivingOffice" /></label><label>Received at<input v-model="capture.receivedAt" type="datetime-local" /></label><div class="wide table-wrap"><table><thead><tr><th>Required document</th><th>Check result</th><th>Notes</th></tr></thead><tbody><tr v-for="item in hardCopyItems" :key="item.document_type"><td>{{ item.label }}</td><td><select v-model="item.status"><option v-for="status in ['Match','Different Document','Missing','Unreadable','Original Required at Interview']" :key="status">{{ status }}</option></select></td><td><input v-model="item.notes" :aria-label="`${item.label} notes`" /></td></tr><tr v-if="!hardCopyItems.length"><td colspan="3">No hard-copy requirements are configured for this post.</td></tr></tbody></table></div><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
+        <div v-else-if="definition.action === 'HARDCOPY_RECEIPT_RECORDED'" class="field-grid"><p class="wide notice"><strong>Final receiving point</strong><br />{{ String(selectedRecord?.payload.receiving_point || 'Uganda Prisons Service Headquarters') }}. Units, regions, interview centres, and panels are transmission channels only.</p><label>Received at headquarters<input v-model="capture.receivedAt" type="datetime-local" /></label><div class="wide table-wrap"><table><thead><tr><th>Required document</th><th>Check result</th><th>Notes</th></tr></thead><tbody><tr v-for="item in hardCopyItems" :key="item.document_type"><td>{{ item.label }}</td><td><select v-model="item.status"><option v-for="status in ['Match','Different Document','Missing','Unreadable','Original Required at Interview']" :key="status">{{ status }}</option></select></td><td><input v-model="item.notes" :aria-label="`${item.label} notes`" /></td></tr><tr v-if="!hardCopyItems.length"><td colspan="3">No hard-copy requirements are configured for this post.</td></tr></tbody></table></div><label class="wide">Notes<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'DOCUMENT_VERIFICATION_RECORDED'" class="field-grid"><label>Field<select v-model="capture.fieldKey"><option v-for="field in extractedFieldOptions" :key="field.value" :value="field.value">{{ field.label }} — {{ field.description }}</option></select></label><label>Action<select v-model="capture.verificationAction"><option v-for="action in ['verify','flag_discrepancy','correct','mark_ocr_incorrect','request_replacement','mark_unreadable','mark_not_present']" :key="action" :value="action">{{ humanize(action) }}</option></select></label><label>Outcome<select v-model="capture.verificationOutcome"><option v-for="outcome in ['VERIFIED/CONSISTENT','PROBABLE MATCH','DISCREPANCY','UNREADABLE/LOW CONFIDENCE','NOT AVAILABLE']" :key="outcome">{{ outcome }}</option></select></label><label>Verified value<input v-model="capture.verifiedValue" /></label><p class="wide notice">The selected document is attached automatically as the evidence reference.</p><label class="wide">Reason<textarea v-model="capture.notes" /></label></div>
         <div v-else-if="definition.action === 'MEDICAL_RESULT_RECORDED'" class="field-grid"><label>Outcome<select v-model="capture.medicalOutcome"><option v-for="outcome in ['Fit','Not Fit','Deferred','Further Assessment Required','No Show']" :key="outcome">{{ outcome }}</option></select></label><label>Clinical reference<input v-model="capture.clinicalReference" /></label><label class="wide">Restricted notes<textarea v-model="capture.notes" /></label></div>
         <label v-else class="checkbox"><input v-model="capture.confirmation" type="checkbox" /> <span>I confirm all panel assessment data is complete and ready to be made immutable.</span></label>

@@ -40,19 +40,6 @@ class OperationsLookupController extends Controller
             ]);
         $regions = DB::table('prison_regions')->where('active', true)->orderBy('name')->get(['id', 'name'])
             ->map(fn (object $region): array => ['id' => $region->id, 'label' => $region->name]);
-        $offices = DB::table('recruitment_centres')
-            ->join('prison_regions', 'prison_regions.id', '=', 'recruitment_centres.prison_region_id')
-            ->where('recruitment_centres.active', true)
-            ->orderBy('recruitment_centres.name')
-            ->get(['recruitment_centres.id', 'recruitment_centres.name', 'recruitment_centres.address', 'prison_regions.id as region_id', 'prison_regions.name as region_name'])
-            ->filter(fn (object $office): bool => $this->centreVisible($user, $office->id, $office->region_id))
-            ->map(fn (object $office): array => [
-                'id' => $office->id,
-                'name' => $office->name,
-                'label' => $office->name,
-                'description' => "{$office->region_name} • {$office->address}",
-            ])->values();
-
         $assignments = DB::table('interview_assignments')
             ->join('applications', 'applications.id', '=', 'interview_assignments.application_id')
             ->join('applicants', 'applicants.id', '=', 'applications.applicant_id')
@@ -206,7 +193,11 @@ class OperationsLookupController extends Controller
         return response()->json(['data' => [
             'posts' => $posts->values(),
             'regions' => $regions->values(),
-            'receiving_offices' => $offices,
+            'hard_copy' => [
+                'can_receive' => $user->hasRole('hard_copy_receiving_officer'),
+                'receiving_point' => config('erecruit.hard_copy.receiving_point'),
+                'transmission_notice' => 'Units and regions are transmission channels only; final receipt is recorded at headquarters.',
+            ],
             'centre_sessions' => $centreSessions,
             'interview_assignments' => $assignments,
             'panels' => $panels,
@@ -227,6 +218,9 @@ class OperationsLookupController extends Controller
             'search' => ['required', 'string', 'min:2', 'max:100'],
             'context' => ['nullable', Rule::in(['general', 'hard_copy', 'medical', 'replacement'])],
         ]);
+        if (($data['context'] ?? 'general') === 'hard_copy') {
+            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may search the receipt register.');
+        }
         $search = trim($data['search']);
         $like = '%'.mb_strtolower(str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search)).'%';
         $ninHash = null;
@@ -298,23 +292,6 @@ class OperationsLookupController extends Controller
             })->values();
 
         return response()->json(['data' => $applications]);
-    }
-
-    private function centreVisible(User $user, string $centreId, string $regionId): bool
-    {
-        if ($user->hasRole(...config('erecruit.security.national_roles'))
-            || $user->scopes()->where('scope_type', 'national')->where(function ($scope): void {
-                $scope->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })->exists()) {
-            return true;
-        }
-
-        return $user->scopes()->where(function ($scope) use ($centreId, $regionId): void {
-            $scope->where(fn ($item) => $item->where('scope_type', 'centre')->where('scope_id', $centreId))
-                ->orWhere(fn ($item) => $item->where('scope_type', 'region')->where('scope_id', $regionId));
-        })->where(function ($scope): void {
-            $scope->whereNull('expires_at')->orWhere('expires_at', '>', now());
-        })->exists();
     }
 
     private function visibleRows(Collection $rows, User $user, ScopeAuthorizer $scopeAuthorizer): Collection

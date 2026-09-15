@@ -233,7 +233,7 @@ class OfflineSyncService
                     DB::table('hard_copy_receipts')->insert([
                         'id' => $receiptId,
                         'application_id' => $application->id,
-                        'receiving_office' => data_get($event, 'payload.receiving_office'),
+                        'receiving_office' => config('erecruit.hard_copy.receiving_point'),
                         'received_by' => $user->id,
                         'received_at' => data_get($event, 'payload.received_at'),
                         'receipt_number' => 'HC/OFF/'.mb_strtoupper(substr(str_replace('-', '', $eventId), 0, 12)),
@@ -458,8 +458,8 @@ class OfflineSyncService
             return 'Attendance status is invalid.';
         }
         if ($actionType === 'HARDCOPY_RECEIPT_RECORDED') {
-            if (! is_string($payload['receiving_office'] ?? null) || trim($payload['receiving_office']) === '' || mb_strlen($payload['receiving_office']) > 255 || strtotime((string) ($payload['received_at'] ?? '')) === false) {
-                return 'A valid receiving office and received time are required.';
+            if (strtotime((string) ($payload['received_at'] ?? '')) === false) {
+                return 'A valid headquarters receipt time is required.';
             }
             if (! is_array($payload['items'] ?? null) || $payload['items'] === [] || count($payload['items']) > 50) {
                 return 'One to fifty hard-copy check items are required.';
@@ -512,7 +512,7 @@ class OfflineSyncService
         if ($actionType === 'HARDCOPY_RECEIPT_RECORDED') {
             $application = Application::query()->find($entityId);
 
-            return $application !== null && $user->hasRole('hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer')
+            return $application !== null && $user->hasRole('hard_copy_receiving_officer')
                 && $this->scopeAuthorizer->canViewApplication($user, $application);
         }
         if ($actionType === 'DOCUMENT_VERIFICATION_RECORDED') {

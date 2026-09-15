@@ -36,7 +36,7 @@ The authoritative register is split between `interview_allocation_runs` (version
 1. Register the protected browser device; its internal device identity is deliberately not shown to field operators.
 2. Select the pack purpose, then search and add only named records returned by the role- and scope-filtered directory. For medical work, also choose the matching named facility/date schedule.
 3. Issue the 24-hour encrypted pack. The internal pack key remains hidden; use the candidate/application reference, panel name, document name, or centre context shown in the workspace.
-4. Capture hard-copy checks through the configured document checklist and verification fields through extracted-field choices. The source document is linked as evidence automatically.
+4. Issue hard-copy reception packs only to authorised headquarters hard-copy clerks. The server fixes the final receiving point as Uganda Prisons Service Headquarters; units and regions may transmit packets but cannot record receipt, and interview centres/panels have no receipt authority. Capture hard-copy checks through the configured checklist and verification fields through extracted-field choices. The source document is linked as evidence automatically.
 5. Review the structured current-server summary, queue events, reconnect, and synchronise. The outbox and conflict view use human record labels; technical event/entity identifiers and serialized payloads are not operator controls.
 6. Resolve conflicts with a documented reason, complete the final sync, and allow the reconciled local pack to be purged. Never copy field-pack records into an unapproved external tool.
 

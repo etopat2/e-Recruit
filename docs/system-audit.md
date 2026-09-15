@@ -293,7 +293,7 @@ Backend regression coverage proves that a district is never split and that a syn
 
 ### New backend endpoints
 
-- `GET /api/v1/operations/lookups` — role/scope-filtered human labels for posts, regions, receiving offices, centre sessions, interview assignments, panels and downstream medical/selection/training registers.
+- `GET /api/v1/operations/lookups` — role/scope-filtered human labels for posts, regions, centre sessions, interview assignments, panels and downstream medical/selection/training registers, plus the server-authoritative headquarters receipt capability and location.
 - `GET /api/v1/operations/applications?search=…&context=…` — rate-limited, seven-result search by applicant name, NIN or applicant-facing reference.
 - `GET /api/v1/interview-allocation-runs` — recent immutable allocation versions.
 - `POST /api/v1/interview-allocation-runs/preview` — store a new district-balanced preview and fingerprints.
@@ -301,7 +301,7 @@ Backend regression coverage proves that a district is never split and that a syn
 
 ### Operations form audit result
 
-All eleven actions on the Operations page now use the shared dialog, floating combobox, validation alert and toast primitives. Application, post, region, office, assignment, panel, schedule, selection, medical, training and replacement relationships are chosen using human-readable, scoped registers; the underlying IDs are silent submitted values. Hard-copy documents are checkboxes, training instructions are repeatable fields, and bounded statuses are select/combobox controls. No JSON textarea or raw-ID/hash paste field remains on either the Operations or Verification page, and neither page renders a raw internal ID as user-facing text.
+All eleven actions on the Operations page now use the shared dialog, floating combobox, validation alert and toast primitives. Application, post, region, assignment, panel, schedule, selection, medical, training and replacement relationships are chosen using human-readable, scoped registers; the underlying IDs are silent submitted values. Hard-copy receipt is restricted to the headquarters clerk capability and its receiving point is fixed by the server rather than selected from interview centres. Hard-copy documents are checkboxes, training instructions are repeatable fields, and bounded statuses are select/combobox controls. No JSON textarea or raw-ID/hash paste field remains on either the Operations or Verification page, and neither page renders a raw internal ID as user-facing text.
 
 ### App-wide human-reference remediation
 

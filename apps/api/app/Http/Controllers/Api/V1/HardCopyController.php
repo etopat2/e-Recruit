@@ -16,9 +16,8 @@ class HardCopyController extends Controller
     public function store(Request $request, Application $application, AuditService $audit): JsonResponse
     {
         $this->authorize('view', $application);
-        abort_unless($request->user()->hasRole('hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer'), 403);
+        abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may record final receipt.');
         $data = $request->validate([
-            'receiving_office' => ['required', 'string', 'max:255'],
             'received_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1', 'max:50'],
@@ -34,7 +33,7 @@ class HardCopyController extends Controller
             DB::table('hard_copy_receipts')->insert([
                 'id' => $receiptId,
                 'application_id' => $application->id,
-                'receiving_office' => $data['receiving_office'],
+                'receiving_office' => config('erecruit.hard_copy.receiving_point'),
                 'received_by' => $request->user()->id,
                 'received_at' => $data['received_at'],
                 'receipt_number' => $receiptNumber,

@@ -23,7 +23,7 @@ class DatabaseSeeder extends Seeder
         $roles = [
             'applicant' => ['Applicant', false],
             'assisted_application_officer' => ['Assisted Application Officer', false],
-            'hard_copy_receiving_officer' => ['Hard-copy Receiving Officer', false],
+            'hard_copy_receiving_officer' => ['Headquarters Hard-copy Clerk', false],
             'verification_officer' => ['Verification Officer', true],
             'data_clerk' => ['Data Clerk', false],
             'attendance_officer' => ['Attendance Officer', false],

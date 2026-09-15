@@ -35,3 +35,7 @@ Composer/compilers and Node build dependencies remain in build stages. The API, 
 ## ADR-009 — Release truthfulness
 
 Completion of the v1.0 software scope permits a staging/pilot release-candidate decision, not an automatic production-ready claim. Authoritative policy/data, approved infrastructure/credentials, independent security/privacy/accessibility checks, target load/restore evidence, field/clinical UAT and named accountable signatures remain explicit external GO gates.
+
+## ADR-010 — Headquarters hard-copy receipt authority
+
+Uganda Prisons Service Headquarters is the sole final receiving point for hard-copy applications. The dedicated headquarters hard-copy clerk role records the accountable receipt online or through a scoped offline pack. Units and regions are transmission channels only; regional officers, centre coordinators, interview centres and panels cannot search the receipt register, issue reception packs or record final receipt. The server supplies the receiving point so clients cannot redirect it.
