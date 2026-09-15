@@ -11,6 +11,7 @@ use App\Services\AuditService;
 use App\Support\CanonicalJson;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -307,7 +308,7 @@ class SelectionController extends Controller
         return response()->json(['override' => DB::table('selection_overrides')->where('id', $record->id)->first(), 'outcomes' => $selectionRun->outcomes()->orderBy('position')->get()]);
     }
 
-    private function humanOutcomes(SelectionRun $run): \Illuminate\Support\Collection
+    private function humanOutcomes(SelectionRun $run): Collection
     {
         return DB::table('selection_outcomes')
             ->join('applications', 'applications.id', '=', 'selection_outcomes.application_id')
