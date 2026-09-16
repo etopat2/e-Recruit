@@ -264,7 +264,7 @@ label .field-help { color: var(--muted); font-weight: 400; line-height: 1.4; }
 .pdf-page figcaption { position: absolute; right: .35rem; bottom: .25rem; padding: .14rem .35rem; background: rgb(255 255 255 / 84%); color: #433; font-size: .65rem; }
 .image-page { position: relative; margin-inline: auto; background: #fff; }
 .image-page img { display: block; width: 100%; height: auto; }
-.preview-error { margin: 0; padding: .8rem; background: #fff1f1; color: var(--danger); }
+.preview-error { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin: 0; padding: .8rem; background: #fff1f1; color: var(--danger); }
 .source-highlight { position: absolute; border: 3px solid #ffb000; background: rgb(255 176 0 / 24%); box-shadow: 0 0 0 2px #fff; pointer-events: none; min-width: 1.2rem; min-height: 1rem; }
 .source-focus { padding: .65rem; margin: .55rem 0 0; background: #fff4cf; border-left: 4px solid var(--gold); font-size: .9rem; }
 .evidence-source { padding: .35rem; border: 0; background: transparent; color: var(--ink); text-align: left; text-decoration: underline; cursor: pointer; }

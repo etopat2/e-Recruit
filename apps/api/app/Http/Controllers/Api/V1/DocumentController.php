@@ -77,9 +77,10 @@ class DocumentController extends Controller
         $disk = Storage::disk($document->storage_disk);
         abort_unless($disk->exists($document->original_path), 404);
 
-        $size = (int) $disk->size($document->original_path);
-        [$start, $end] = $this->requestedRange($request->header('Range'), $size);
-        $isPartial = $start !== 0 || $end !== $size - 1;
+        $size = (int) $document->size_bytes;
+        $rangeHeader = $request->header('Range');
+        [$start, $end] = $this->requestedRange($rangeHeader, $size);
+        $isPartial = $rangeHeader !== null && $rangeHeader !== '';
         $length = $size === 0 ? 0 : $end - $start + 1;
         $headers = [
             'Accept-Ranges' => 'bytes',
@@ -88,6 +89,7 @@ class DocumentController extends Controller
             'Content-Length' => (string) $length,
             'Content-Type' => $document->detected_mime_type,
             'ETag' => '"'.$document->sha256.'"',
+            'X-Accel-Buffering' => 'no',
             'X-Content-Type-Options' => 'nosniff',
         ];
         if ($isPartial) {

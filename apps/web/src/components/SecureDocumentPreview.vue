@@ -42,6 +42,13 @@ let resizeTimer: ReturnType<typeof setTimeout> | null = null
 const isPdf = () => props.mimeType === 'application/pdf' || props.filename.toLowerCase().endsWith('.pdf')
 const isImage = () => props.mimeType.startsWith('image/')
 
+function previewErrorMessage(problem: unknown): string {
+  const message = problem instanceof Error ? problem.message : ''
+  return /failed to fetch/i.test(message)
+    ? 'The protected document service could not be reached. Check the connection and retry the preview.'
+    : message || 'The protected preview could not be loaded.'
+}
+
 onMounted(() => {
   resizeObserver = new ResizeObserver(() => {
     if (resizeTimer) clearTimeout(resizeTimer)
@@ -88,7 +95,10 @@ async function load(): Promise<void> {
         url: props.url,
         httpHeaders: { Authorization: `Bearer ${authToken()}` },
         rangeChunkSize: 128 * 1024,
+        // Range-only loading prevents a multi-page document from being fully
+        // downloaded before PDF.js can paint the first relevant page.
         disableAutoFetch: true,
+        disableStream: true,
       })
       pdf = await loadingTask.promise
       pages.value = Array.from({ length: pdf.numPages }, (_, index) => index + 1)
@@ -104,7 +114,7 @@ async function load(): Promise<void> {
     }
   } catch (problem) {
     if (problem instanceof Error && problem.name === 'RenderingCancelledException') return
-    error.value = problem instanceof Error ? problem.message : 'The protected preview could not be loaded.'
+    error.value = previewErrorMessage(problem)
   } finally {
     loading.value = false
   }
@@ -116,7 +126,10 @@ async function renderPdf(): Promise<void> {
   activeRender?.cancel()
   const availableWidth = Math.max(280, container.value.clientWidth - 24)
 
-  for (const pageNumber of pages.value) {
+  const focusedPage = Math.max(1, Math.min(props.focusedPage || 1, pages.value.length))
+  const renderOrder = [focusedPage, ...pages.value.filter((pageNumber) => pageNumber !== focusedPage)]
+
+  for (const pageNumber of renderOrder) {
     if (generation !== renderGeneration || !pdf) return
     const canvas = canvases.get(pageNumber)
     if (!canvas) continue
@@ -191,7 +204,7 @@ async function openOriginal(): Promise<void> {
     window.open(url, '_blank', 'noopener,noreferrer')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   } catch (problem) {
-    error.value = problem instanceof Error ? problem.message : 'The original file could not be opened.'
+    error.value = previewErrorMessage(problem)
   }
 }
 </script>
@@ -206,7 +219,10 @@ async function openOriginal(): Promise<void> {
       <button type="button" class="button secondary compact toolbar-end" @click="openOriginal">Open original</button>
     </div>
     <div v-if="loading && !firstPageReady" class="preview-loading"><LoadingIndicator label="Loading first page…" /></div>
-    <p v-if="error" class="preview-error" role="alert">{{ error }}</p>
+    <div v-if="error" class="preview-error" role="alert">
+      <span>{{ error }}</span>
+      <button type="button" class="button secondary compact" @click="load">Retry preview</button>
+    </div>
     <div v-if="isPdf()" class="pdf-pages" :aria-busy="loading">
       <figure v-for="page in pages" :key="page" :ref="(element) => setPageElement(element, page)" class="pdf-page">
         <canvas :ref="(element) => setCanvas(element, page)" />

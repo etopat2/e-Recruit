@@ -46,7 +46,7 @@ class VerificationController extends Controller
                 'filename' => $document->original_filename,
                 'mime_type' => $document->detected_mime_type,
                 'version' => $document->version,
-                'preview_url' => route('api.documents.preview', $document),
+                'preview_url' => route('api.documents.preview', $document, false),
                 'quality' => $document->quality_indicators,
                 'fields' => $fields->where('document_id', $document->id)->values(),
             ]),

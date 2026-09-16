@@ -15,7 +15,7 @@ class DocumentPreviewTest extends TestCase
     use CreatesRecruitmentFixtures;
     use RefreshDatabase;
 
-    public function test_authorised_preview_supports_single_byte_ranges_for_fast_pdf_rendering(): void
+    public function test_authorised_preview_uses_a_same_origin_url_and_supports_byte_ranges_for_fast_pdf_rendering(): void
     {
         Storage::fake('local');
         $fixture = $this->recruitmentFixture();
@@ -41,6 +41,10 @@ class DocumentPreviewTest extends TestCase
         ]);
         Sanctum::actingAs($officer);
 
+        $this->getJson("/api/v1/applications/{$fixture['application']->id}/verification-workbench")
+            ->assertOk()
+            ->assertJsonPath('documents.0.preview_url', "/api/v1/documents/{$document->id}/preview");
+
         $this->withHeader('Range', 'bytes=2-5')
             ->get("/api/v1/documents/{$document->id}/preview")
             ->assertStatus(206)
@@ -48,6 +52,13 @@ class DocumentPreviewTest extends TestCase
             ->assertHeader('Content-Range', 'bytes 2-5/10')
             ->assertHeader('Content-Length', '4')
             ->assertHeader('Content-Disposition', 'inline; filename="protected.pdf"')
+            ->assertHeader('X-Accel-Buffering', 'no')
             ->assertStreamedContent('2345');
+
+        $this->withHeader('Range', 'bytes=0-')
+            ->get("/api/v1/documents/{$document->id}/preview")
+            ->assertStatus(206)
+            ->assertHeader('Content-Range', 'bytes 0-9/10')
+            ->assertStreamedContent('0123456789');
     }
 }

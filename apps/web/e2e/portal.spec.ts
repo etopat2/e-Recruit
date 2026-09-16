@@ -1,6 +1,26 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 
+function onePagePdf(): Buffer {
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n',
+    '4 0 obj\n<< /Length 0 >>\nstream\n\nendstream\nendobj\n',
+  ]
+  let contents = '%PDF-1.4\n'
+  const offsets = objects.map((object) => {
+    const offset = Buffer.byteLength(contents)
+    contents += object
+    return offset
+  })
+  const xrefOffset = Buffer.byteLength(contents)
+  contents += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  contents += offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  contents += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return Buffer.from(contents)
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/campaigns', async (route) => route.fulfill({
     json: { data: [{ id: 'campaign-1', code: 'UPS-2026', name: 'UPS Recruitment 2026', year: 2026, status: 'published', opens_at: '2026-09-01T00:00:00Z', closes_at: '2026-09-30T20:59:00Z', privacy_notice: { summary: 'Your data is protected.' }, posts: [{ id: 'post-1', code: 'WARDER', name: 'Recruit Warder', description: 'Serve with integrity.', sections: {}, hard_copy_required: true }] }] },
@@ -383,6 +403,7 @@ test('applicant registers, completes the dynamic form, uploads evidence, submits
 
 test('verification workbench keeps source evidence and accountable decision together', async ({ page }) => {
   await staffSession(page)
+  const previewPdf = onePagePdf()
   const workbench = {
     application: { id: 'app-1', reference: 'UPS/2026/WRD/000001', applicant_name: 'Synthetic Applicant', entered_data: { personal: { full_name: 'Synthetic Applicant', date_of_birth: '2001-05-12' }, origin: { district: 'Kampala', county: 'Kampala City', subcounty: 'Central Division', parish: 'Old Kampala', village: 'Namirembe' }, education: [{ level: 'UCE', institution: 'Synthetic School', result: 'Division 1', completion_year: 2024 }], declaration: { accepted: true } } },
     documents: [{ id: 'doc-1', type: 'national_id', label: 'National ID', filename: 'synthetic-national-id.pdf', mime_type: 'application/pdf', version: 1, preview_url: '/api/v1/documents/doc-1/preview', quality: { status: 'review' }, fields: [{ field_key: 'name', raw_value: 'SYNTHETIC APPLICANT', confidence: 0.91, page_number: 1, bounding_polygon: [0, 0, 1, 1] }] }],
@@ -390,11 +411,23 @@ test('verification workbench keeps source evidence and accountable decision toge
     evidence_matrix: { name: [{ document_id: 'doc-1', source_label: 'National ID — version 1', source_filename: 'synthetic-national-id.pdf', value: 'SYNTHETIC APPLICANT', confidence: 0.91, page: 1, bounding_polygon: { x: 0.1, y: 0.2, width: 0.4, height: 0.05, coordinate_space: 'normalised' } }] },
   }
   await page.route('**/api/v1/applications/app-1/verification-workbench', async (route) => route.fulfill({ json: workbench }))
-  await page.route('**/api/v1/documents/doc-1/preview', async (route) => route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' }))
+  await page.route('**/api/v1/documents/doc-1/preview', async (route) => {
+    const range = route.request().headers().range?.match(/^bytes=(\d+)-(\d*)$/)
+    if (!range) {
+      await route.fulfill({ contentType: 'application/pdf', headers: { 'Accept-Ranges': 'bytes', 'Content-Length': String(previewPdf.length) }, body: previewPdf })
+      return
+    }
+    const start = Number(range[1])
+    const end = range[2] ? Math.min(Number(range[2]), previewPdf.length - 1) : previewPdf.length - 1
+    const chunk = previewPdf.subarray(start, end + 1)
+    await route.fulfill({ status: 206, contentType: 'application/pdf', headers: { 'Accept-Ranges': 'bytes', 'Content-Length': String(chunk.length), 'Content-Range': `bytes ${start}-${end}/${previewPdf.length}` }, body: chunk })
+  })
   await page.route('**/api/v1/documents/doc-1/verification', async (route) => route.fulfill({ status: 201, json: { decision: { id: 'decision-1' } } }))
 
   await page.goto('/staff/verification/app-1')
   await expect(page.getByRole('heading', { name: 'Field-by-field comparison' })).toBeVisible()
+  await expect.poll(() => page.locator('.pdf-page canvas').evaluate((canvas: HTMLCanvasElement) => canvas.width)).toBeGreaterThan(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByText('Kampala, Kampala City, Central Division, Old Kampala, Namirembe')).toBeVisible()
   await expect(page.getByText('Yes')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('doc-1')
