@@ -34,6 +34,8 @@ x-api-environment: &api-environment
   MAIL_FROM_NAME: ${MAIL_FROM_NAME:-UPS e-Recruit}
   DOCUMENT_WORKER_URL: http://document-worker:8001
   DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:?DOCUMENT_WORKER_TOKEN is required}
+  PDF_TAHOMA_REGULAR_PATH: /opt/erecruit/fonts/tahoma.ttf
+  PDF_TAHOMA_BOLD_PATH: /opt/erecruit/fonts/tahomabd.ttf
   QUEUE_CONNECTION: database
   CACHE_STORE: redis
   SESSION_DRIVER: database
@@ -78,6 +80,7 @@ x-api-service: &api-service
   environment: *api-environment
   volumes:
     - api-storage:/var/www/html/storage
+    - ${TAHOMA_FONT_DIR:?TAHOMA_FONT_DIR is required}:/opt/erecruit/fonts:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -199,7 +202,7 @@ services:
 
   queue:
     <<: *api-service
-    command: php artisan queue:work --tries=5 --backoff=5 --timeout=120
+    command: php artisan queue:work --tries=5 --backoff=5 --timeout=600
 
   scheduler:
     <<: *api-service

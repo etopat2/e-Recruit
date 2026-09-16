@@ -71,6 +71,7 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::put('upload-sessions/{uploadSession}/chunks/{index}', [UploadSessionController::class, 'chunk'])->whereNumber('index')->middleware('throttle:uploads')->name('upload-sessions.chunks.store');
             Route::post('upload-sessions/{uploadSession}/complete', [UploadSessionController::class, 'complete'])->middleware('throttle:uploads')->name('upload-sessions.complete');
             Route::get('documents/{document}', [DocumentController::class, 'show'])->name('documents.show');
+            Route::get('documents/{document}/preview', [DocumentController::class, 'preview'])->name('documents.preview');
             Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
 
             Route::get('helpdesk/tickets', [HelpdeskController::class, 'index'])->name('helpdesk.index');
@@ -92,7 +93,11 @@ Route::prefix('v1')->name('api.')->group(function (): void {
                 Route::put('admin/geography/units/{unit}', [GeographyController::class, 'updateUnit'])->name('admin.geography.units.update');
                 Route::delete('admin/geography/units/{unit}', [GeographyController::class, 'destroyUnit'])->name('admin.geography.units.destroy');
                 Route::post('admin/geography/regions', [GeographyController::class, 'storeRegion'])->name('admin.geography.regions.store');
+                Route::put('admin/geography/regions/{region}', [GeographyController::class, 'updateRegion'])->name('admin.geography.regions.update');
                 Route::post('admin/geography/centres', [GeographyController::class, 'storeCentre'])->name('admin.geography.centres.store');
+                Route::put('admin/geography/centres/{centre}', [GeographyController::class, 'updateCentre'])->name('admin.geography.centres.update');
+                Route::post('admin/geography/medical-facilities', [GeographyController::class, 'storeMedicalFacility'])->name('admin.geography.medical-facilities.store');
+                Route::put('admin/geography/medical-facilities/{medicalFacility}', [GeographyController::class, 'updateMedicalFacility'])->name('admin.geography.medical-facilities.update');
                 Route::post('admin/geography/mappings', [GeographyController::class, 'storeMapping'])->name('admin.geography.mappings.store');
                 Route::get('admin/geography/unresolved', [GeographyController::class, 'unresolved'])->name('admin.geography.unresolved');
                 Route::post('admin/geography/unresolved/{unresolved}/resolve', [GeographyController::class, 'resolve'])->name('admin.geography.unresolved.resolve');
@@ -175,6 +180,9 @@ Route::prefix('v1')->name('api.')->group(function (): void {
             Route::post('training/replacements', [TrainingController::class, 'replace'])->name('training.replacements.store');
 
             Route::get('reports/dashboard', [ReportController::class, 'dashboard'])->name('reports.dashboard');
+            Route::get('reports/recruitment-documents', [ReportController::class, 'recruitmentDocuments'])->name('reports.recruitment-documents.index');
+            Route::post('reports/recruitment-documents', [ReportController::class, 'generateRecruitmentDocument'])->name('reports.recruitment-documents.store');
+            Route::get('reports/recruitment-documents/{export}/download', [ReportController::class, 'downloadRecruitmentDocument'])->name('reports.recruitment-documents.download');
             Route::get('operations/metrics', [HealthController::class, 'metrics'])
                 ->middleware('role:system_administrator,hq_recruitment_administrator,auditor')->name('operations.metrics');
             Route::post('exports', [ReportController::class, 'export'])->name('exports.store');

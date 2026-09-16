@@ -26,10 +26,14 @@ test('OpenAPI contract covers the public and high-risk workflow boundaries', () 
     '/v1/applications/{application}',
     '/v1/applications/{application}/submit',
     '/v1/applications/{application}/verification-workbench',
+    '/v1/documents/{document}/preview',
+    '/v1/admin/geography/medical-facilities',
     '/v1/offline/packages/{offlinePackage}/sync',
     '/v1/selection-runs/{selectionRun}/certify',
     '/v1/medical/results',
     '/v1/final-selections',
+    '/v1/reports/recruitment-documents',
+    '/v1/reports/recruitment-documents/{export}/download',
   ]
   for (const path of required) assert.ok(contract.paths[path], `missing ${path}`)
 })

@@ -11,6 +11,7 @@ const open = ref(false)
 const staffNav = computed(() => session.isStaff)
 const technicalAdmin = computed(() => session.user?.user_type === 'system_administrator')
 const recruitmentStaff = computed(() => staffNav.value && !technicalAdmin.value)
+const officialDocumentStaff = computed(() => ['hq_recruitment_administrator', 'prisons_council_secretariat', 'auditor'].includes(session.user?.user_type || ''))
 const lastApplicationId = ref(sessionStorage.getItem('ups_last_application_id') || '')
 watch(() => route.params.id, (id) => {
   if (typeof id === 'string' && route.path.startsWith('/applications/')) {
@@ -44,6 +45,7 @@ async function signOut() {
         <RouterLink v-if="staffNav" to="/staff/governance">Governance</RouterLink>
         <RouterLink v-if="recruitmentStaff" to="/staff/selection">Selection</RouterLink>
         <RouterLink v-if="recruitmentStaff" to="/staff/operations">Operations</RouterLink>
+        <RouterLink v-if="officialDocumentStaff" to="/staff/recruitment-documents">Official lists</RouterLink>
         <RouterLink v-if="technicalAdmin" to="/staff/users">Users</RouterLink>
         <RouterLink v-if="recruitmentStaff" to="/field/offline">Field mode</RouterLink>
         <RouterLink to="/help">Help</RouterLink>

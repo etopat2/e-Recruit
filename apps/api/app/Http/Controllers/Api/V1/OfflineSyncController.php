@@ -27,13 +27,13 @@ class OfflineSyncController extends Controller
 {
     public function referenceOptions(Request $request, ScopeAuthorizer $scopeAuthorizer): JsonResponse
     {
-        abort_unless($request->user()->hasRole('panel_member', 'panel_head', 'attendance_officer', 'centre_coordinator', 'hard_copy_receiving_officer', 'regional_recruitment_officer', 'verification_officer', 'data_clerk', 'medical_officer'), 403);
+        abort_unless($request->user()->hasRole('panel_member', 'panel_head', 'attendance_officer', 'centre_coordinator', 'regional_recruitment_officer', 'verification_officer', 'data_clerk', 'medical_officer'), 403);
         $data = $request->validate([
             'pack_type' => ['required', 'in:score_capture,attendance,hard_copy,verification,medical,panel_closure'],
             'search' => ['nullable', 'string', 'max:120'],
         ]);
         if ($data['pack_type'] === 'hard_copy') {
-            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may search reception-pack records.');
+            abort_unless($request->user()->hasRole('verification_officer'), 403, 'Only an authorised verification officer may search reception-pack records.');
         }
         $search = Str::lower(trim((string) ($data['search'] ?? '')));
 
@@ -120,7 +120,7 @@ class OfflineSyncController extends Controller
                     && (! $request->user()->hasRole('panel_member') || (int) $row->assessor_id === (int) $request->user()->id),
                 'attendance' => $request->user()->hasRole('attendance_officer', 'centre_coordinator', 'panel_head')
                     && $scopeAuthorizer->canPerform($request->user(), 'decision:attendance', $application),
-                'hard_copy' => $request->user()->hasRole('hard_copy_receiving_officer')
+                'hard_copy' => $request->user()->hasRole('verification_officer')
                     && $scopeAuthorizer->canViewApplication($request->user(), $application),
                 'verification' => $request->user()->hasRole('verification_officer', 'data_clerk')
                     && $scopeAuthorizer->canPerform($request->user(), 'decision:verification', $application),
@@ -186,7 +186,7 @@ class OfflineSyncController extends Controller
 
     public function issue(Request $request, CanonicalJson $canonicalJson, ScopeAuthorizer $scopeAuthorizer, AuditService $audit): JsonResponse
     {
-        abort_unless($request->user()->hasRole('panel_member', 'panel_head', 'attendance_officer', 'centre_coordinator', 'hard_copy_receiving_officer', 'regional_recruitment_officer', 'verification_officer', 'data_clerk', 'medical_officer'), 403);
+        abort_unless($request->user()->hasRole('panel_member', 'panel_head', 'attendance_officer', 'centre_coordinator', 'regional_recruitment_officer', 'verification_officer', 'data_clerk', 'medical_officer'), 403);
         $data = $request->validate([
             'registered_device_id' => ['required', 'exists:registered_devices,id'],
             'pack_type' => ['required', 'in:interview,attendance,score_capture,hard_copy,verification,medical,panel_closure'],
@@ -211,7 +211,7 @@ class OfflineSyncController extends Controller
         ];
         [$entityType, $expectedAction] = $packDefinitions[$data['pack_type']];
         if ($data['pack_type'] === 'hard_copy') {
-            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may issue a reception pack.');
+            abort_unless($request->user()->hasRole('verification_officer'), 403, 'Only an authorised verification officer may issue a reception pack.');
         }
         abort_if(collect($data['permitted_actions'])->contains(fn (string $action): bool => $action !== $expectedAction), 422, 'The requested action does not match the pack type.');
 
@@ -508,7 +508,7 @@ class OfflineSyncController extends Controller
             ]];
         }
         if ($packType === 'hard_copy') {
-            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may access a reception pack.');
+            abort_unless($request->user()->hasRole('verification_officer'), 403, 'Only an authorised verification officer may access a reception pack.');
             $application = Application::query()->with('applicant')->find($entityId);
             abort_if($application === null, 422, 'A requested application was not found.');
             abort_unless($scopeAuthorizer->canViewApplication($request->user(), $application), 403);
@@ -535,7 +535,7 @@ class OfflineSyncController extends Controller
                 'candidate_name' => trim($document->application->applicant->first_name.' '.$document->application->applicant->last_name),
                 'document_type' => $document->document_type,
                 'document_version' => $document->version,
-                'preview_endpoint' => "/api/v1/documents/{$document->id}/download",
+                'preview_endpoint' => "/api/v1/documents/{$document->id}/preview",
                 'extracted_fields' => $fields,
             ]];
         }

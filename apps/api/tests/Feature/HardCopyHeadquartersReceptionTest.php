@@ -13,14 +13,14 @@ class HardCopyHeadquartersReceptionTest extends TestCase
     use CreatesRecruitmentFixtures;
     use RefreshDatabase;
 
-    public function test_headquarters_clerk_records_server_authoritative_receiving_point(): void
+    public function test_verification_officer_records_server_authoritative_receiving_point(): void
     {
         $fixture = $this->recruitmentFixture([
             'reference' => 'UPS/TEST/HC/000001',
             'status' => 'awaiting_hard_copies',
         ]);
-        $clerk = $this->scopedUser('hard_copy_receiving_officer', $fixture['campaign']->id);
-        Sanctum::actingAs($clerk);
+        $officer = $this->scopedUser('verification_officer', $fixture['campaign']->id);
+        Sanctum::actingAs($officer);
 
         $this->postJson("/api/v1/applications/{$fixture['application']->id}/hard-copy-receipts", [
             'receiving_office' => 'A forged interview-centre value',
@@ -36,7 +36,7 @@ class HardCopyHeadquartersReceptionTest extends TestCase
         $this->assertDatabaseHas('hard_copy_receipts', [
             'application_id' => $fixture['application']->id,
             'receiving_office' => 'Uganda Prisons Service Headquarters',
-            'received_by' => $clerk->id,
+            'received_by' => $officer->id,
         ]);
     }
 

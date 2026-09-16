@@ -21,6 +21,19 @@ Alert on elevated 5xx/429, queue age, failed jobs, OCR latency/failure, object-s
 
 Run at least one durable `php artisan queue:work --queue=default --tries=5 --backoff=5` process and one scheduler invocation each minute (`php artisan schedule:run`). Stop workers gracefully before image replacement and restart them after deployment.
 
+Official recruitment lists run on the default queue with a 600-second worker timeout. Mount licensed `tahoma.ttf` and `tahomabd.ttf` read-only at `/opt/erecruit/fonts`; generation fails visibly instead of silently substituting a non-official font. After a font or worker configuration change, restart the API, queue and scheduler services and run `php artisan optimize:clear`.
+
+## Recruitment geography reference data
+
+After the canonical Uganda administrative hierarchy is present, run `php artisan erecruit:import-ups-recruitment-geography`. The command verifies the committed source hashes and idempotently imports 19 prison regions, 151 region-jurisdiction links, 19 recruitment centres, 146 district/city routes and 17 medical facilities. Shared Central/Kampala Extra jurisdictions and unresolved facility attribution remain explicit in source metadata; do not guess a single owner. Maintain active regions, centres and medical facilities through **Geography**, and retain the import audit record when a future approved workbook supersedes this version.
+
+## Official recruitment-list generation
+
+1. Confirm the post's interview assignments, latest certified selection run, or Council-approved final selections are complete for the intended list.
+2. Open **Official lists**, select the post and layout, state the accountable purpose, and queue generation. HQ recruitment administrators and Prisons Council secretariat may generate; auditors have read-only access to the register and downloads.
+3. Wait for `ready`, then download the protected PDF and verify the displayed SHA-256 against the register. The worker excludes contact details, limits NIN exposure by document type, uses the supplied UPS crest and Tahoma, and never copies a historical handwritten signature.
+4. Treat every generated file as a time-bound controlled copy. Regenerate after source records change; investigate `failed` entries through the queue log and the visible failure reason.
+
 ## Interview allocation runbook
 
 1. Confirm every validated candidate has an LC1-supported routing address. For an `origin_or_residence` post, the application must state whether its LC1 letter supports the place of origin or current residence; submission persists that district as the routing district.
@@ -36,7 +49,7 @@ The authoritative register is split between `interview_allocation_runs` (version
 1. Register the protected browser device; its internal device identity is deliberately not shown to field operators.
 2. Select the pack purpose, then search and add only named records returned by the role- and scope-filtered directory. For medical work, also choose the matching named facility/date schedule.
 3. Issue the 24-hour encrypted pack. The internal pack key remains hidden; use the candidate/application reference, panel name, document name, or centre context shown in the workspace.
-4. Issue hard-copy reception packs only to authorised headquarters hard-copy clerks. The server fixes the final receiving point as Uganda Prisons Service Headquarters; units and regions may transmit packets but cannot record receipt, and interview centres/panels have no receipt authority. Capture hard-copy checks through the configured checklist and verification fields through extracted-field choices. The source document is linked as evidence automatically.
+4. Issue hard-copy reception packs only to authorised verification officers. The server fixes the final receiving point as Uganda Prisons Service Headquarters; units and regions may transmit packets but cannot record receipt, and interview centres/panels have no receipt authority. Capture hard-copy checks through the configured checklist and verification fields through extracted-field choices. The source document is linked as evidence automatically.
 5. Review the structured current-server summary, queue events, reconnect, and synchronise. The outbox and conflict view use human record labels; technical event/entity identifiers and serialized payloads are not operator controls.
 6. Resolve conflicts with a documented reason, complete the final sync, and allow the reconciled local pack to be purged. Never copy field-pack records into an unapproved external tool.
 

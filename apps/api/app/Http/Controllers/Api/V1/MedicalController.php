@@ -7,6 +7,7 @@ use App\Http\Requests\StoreMedicalResultRequest;
 use App\Jobs\DeliverNotificationJob;
 use App\Models\Application;
 use App\Models\ApplicationStatusHistory;
+use App\Models\MedicalFacility;
 use App\Models\MedicalResult;
 use App\Models\SelectionOutcome;
 use App\Services\AuditService;
@@ -25,7 +26,7 @@ class MedicalController extends Controller
         abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'medical_officer'), 403);
         $data = $request->validate([
             'recruitment_post_id' => ['required', 'exists:recruitment_posts,id'],
-            'facility' => ['required', 'string', 'max:255'],
+            'medical_facility_id' => ['required', 'exists:medical_facilities,id'],
             'scheduled_date' => ['required', 'date'],
             'reporting_time' => ['required', 'date_format:H:i'],
             'capacity' => ['nullable', 'integer', 'min:1', 'max:10000'],
@@ -40,9 +41,12 @@ class MedicalController extends Controller
             })->get()->contains(fn ($scope): bool => in_array('*', $scope->allowed_tasks ?? [], true) || in_array('decision:medical', $scope->allowed_tasks ?? [], true));
             abort_unless($hasScope, 403, 'The recruitment post is outside your medical scope.');
         }
+        $facility = MedicalFacility::query()->whereKey($data['medical_facility_id'])->where('active', true)->first();
+        abort_if($facility === null, 422, 'Select an active approved medical facility.');
+        $scheduleData = [...$data, 'facility' => $facility->name];
         $id = (string) Str::ulid();
-        DB::table('medical_schedules')->insert(['id' => $id, ...$data, 'created_at' => now(), 'updated_at' => now()]);
-        $audit->record('medical.schedule_created', 'medical_schedule', $id, actor: $request->user(), after: $data);
+        DB::table('medical_schedules')->insert(['id' => $id, ...$scheduleData, 'created_at' => now(), 'updated_at' => now()]);
+        $audit->record('medical.schedule_created', 'medical_schedule', $id, actor: $request->user(), after: $scheduleData);
 
         return response()->json(['schedule' => DB::table('medical_schedules')->where('id', $id)->first()], 201);
     }

@@ -17,7 +17,7 @@ use InvalidArgumentException;
 class OperationsLookupController extends Controller
 {
     private const Roles = [
-        'hard_copy_receiving_officer', 'centre_coordinator', 'regional_recruitment_officer',
+        'verification_officer', 'centre_coordinator', 'regional_recruitment_officer',
         'hq_recruitment_administrator', 'attendance_officer', 'panel_head', 'medical_officer',
         'prisons_council_secretariat', 'training_school_officer', 'written_examination_officer',
     ];
@@ -85,6 +85,17 @@ class OperationsLookupController extends Controller
                 'description' => "{$panel->session_date} • Head: ".($head ?: 'Not assigned'),
             ];
         });
+
+        $medicalFacilities = DB::table('medical_facilities')
+            ->leftJoin('prison_regions', 'prison_regions.id', '=', 'medical_facilities.prison_region_id')
+            ->where('medical_facilities.active', true)
+            ->orderBy('medical_facilities.name')
+            ->get(['medical_facilities.id', 'medical_facilities.name', 'medical_facilities.location', 'medical_facilities.region_attribution', 'prison_regions.name as region_name'])
+            ->map(fn (object $facility): array => [
+                'id' => $facility->id,
+                'label' => $facility->name,
+                'description' => $facility->location.' · '.($facility->region_name ?: $facility->region_attribution ?: 'Region attribution pending'),
+            ]);
 
         $medicalSchedules = DB::table('medical_schedules')
             ->join('recruitment_posts', 'recruitment_posts.id', '=', 'medical_schedules.recruitment_post_id')
@@ -194,13 +205,14 @@ class OperationsLookupController extends Controller
             'posts' => $posts->values(),
             'regions' => $regions->values(),
             'hard_copy' => [
-                'can_receive' => $user->hasRole('hard_copy_receiving_officer'),
+                'can_receive' => $user->hasRole('verification_officer'),
                 'receiving_point' => config('erecruit.hard_copy.receiving_point'),
                 'transmission_notice' => 'Units and regions are transmission channels only; final receipt is recorded at headquarters.',
             ],
             'centre_sessions' => $centreSessions,
             'interview_assignments' => $assignments,
             'panels' => $panels,
+            'medical_facilities' => $medicalFacilities,
             'medical_schedules' => $medicalSchedules,
             'selection_outcomes' => $selectionOutcomes,
             'medical_results' => $medicalResults,
@@ -219,7 +231,7 @@ class OperationsLookupController extends Controller
             'context' => ['nullable', Rule::in(['general', 'hard_copy', 'medical', 'replacement'])],
         ]);
         if (($data['context'] ?? 'general') === 'hard_copy') {
-            abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may search the receipt register.');
+            abort_unless($request->user()->hasRole('verification_officer'), 403, 'Only an authorised verification officer may search the receipt register.');
         }
         $search = trim($data['search']);
         $like = '%'.mb_strtolower(str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search)).'%';

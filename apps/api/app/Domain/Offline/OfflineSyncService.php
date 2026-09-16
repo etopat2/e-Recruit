@@ -512,7 +512,7 @@ class OfflineSyncService
         if ($actionType === 'HARDCOPY_RECEIPT_RECORDED') {
             $application = Application::query()->find($entityId);
 
-            return $application !== null && $user->hasRole('hard_copy_receiving_officer')
+            return $application !== null && $user->hasRole('verification_officer')
                 && $this->scopeAuthorizer->canViewApplication($user, $application);
         }
         if ($actionType === 'DOCUMENT_VERIFICATION_RECORDED') {

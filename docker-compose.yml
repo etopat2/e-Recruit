@@ -135,6 +135,8 @@ services:
       MAIL_PORT: 1025
       DOCUMENT_WORKER_URL: http://document-worker:8001
       DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
+      PDF_TAHOMA_REGULAR_PATH: /opt/erecruit/fonts/tahoma.ttf
+      PDF_TAHOMA_BOLD_PATH: /opt/erecruit/fonts/tahomabd.ttf
       INSTITUTION_SEARCH_CACHE_HOURS: ${INSTITUTION_SEARCH_CACHE_HOURS:-24}
       INSTITUTION_DIRECTORY_TIMEOUT_SECONDS: ${INSTITUTION_DIRECTORY_TIMEOUT_SECONDS:-30}
       EMIS_INSTITUTION_SYNC_PAGE_SIZE: ${EMIS_INSTITUTION_SYNC_PAGE_SIZE:-1000}
@@ -152,6 +154,7 @@ services:
     volumes:
       - ./apps/api:/var/www/html
       - api-vendor:/var/www/html/vendor
+      - ${TAHOMA_FONT_DIR:-./infra/fonts}:/opt/erecruit/fonts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -202,6 +205,8 @@ services:
       MAIL_PORT: 1025
       DOCUMENT_WORKER_URL: http://document-worker:8001
       DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
+      PDF_TAHOMA_REGULAR_PATH: /opt/erecruit/fonts/tahoma.ttf
+      PDF_TAHOMA_BOLD_PATH: /opt/erecruit/fonts/tahomabd.ttf
       INSTITUTION_SEARCH_CACHE_HOURS: ${INSTITUTION_SEARCH_CACHE_HOURS:-24}
       INSTITUTION_DIRECTORY_TIMEOUT_SECONDS: ${INSTITUTION_DIRECTORY_TIMEOUT_SECONDS:-30}
       EMIS_INSTITUTION_SYNC_PAGE_SIZE: ${EMIS_INSTITUTION_SYNC_PAGE_SIZE:-1000}
@@ -213,10 +218,11 @@ services:
       QUEUE_CONNECTION: database
       CACHE_STORE: redis
       SESSION_DRIVER: database
-    command: php artisan queue:work --tries=5 --backoff=5 --timeout=120
+    command: php artisan queue:work --tries=5 --backoff=5 --timeout=600
     volumes:
       - ./apps/api:/var/www/html
       - api-vendor:/var/www/html/vendor
+      - ${TAHOMA_FONT_DIR:-./infra/fonts}:/opt/erecruit/fonts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -241,6 +247,7 @@ services:
     volumes:
       - ./apps/api:/var/www/html
       - api-vendor:/var/www/html/vendor
+      - ${TAHOMA_FONT_DIR:-./infra/fonts}:/opt/erecruit/fonts:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -16,6 +16,7 @@ const router = createRouter({
     { path: '/staff/governance', name: 'governance', component: () => import('./views/GovernanceView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/selection', name: 'selection', component: () => import('./views/SelectionConsoleView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/operations', name: 'operations-workflow', component: () => import('./views/OperationsWorkflowView.vue'), meta: { auth: true, staff: true } },
+    { path: '/staff/recruitment-documents', name: 'recruitment-documents', component: () => import('./views/RecruitmentDocumentsView.vue'), meta: { auth: true, staff: true } },
     { path: '/staff/users', name: 'user-administration', component: () => import('./views/UserAdministrationView.vue'), meta: { auth: true, technicalAdmin: true } },
     { path: '/field/offline', name: 'offline', component: () => import('./views/OfflineWorkspaceView.vue'), meta: { auth: true, staff: true } },
     { path: '/help', name: 'help', component: () => import('./views/HelpdeskView.vue'), meta: { auth: true } },

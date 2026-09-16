@@ -301,7 +301,7 @@ Backend regression coverage proves that a district is never split and that a syn
 
 ### Operations form audit result
 
-All eleven actions on the Operations page now use the shared dialog, floating combobox, validation alert and toast primitives. Application, post, region, assignment, panel, schedule, selection, medical, training and replacement relationships are chosen using human-readable, scoped registers; the underlying IDs are silent submitted values. Hard-copy receipt is restricted to the headquarters clerk capability and its receiving point is fixed by the server rather than selected from interview centres. Hard-copy documents are checkboxes, training instructions are repeatable fields, and bounded statuses are select/combobox controls. No JSON textarea or raw-ID/hash paste field remains on either the Operations or Verification page, and neither page renders a raw internal ID as user-facing text.
+All eleven actions on the Operations page now use the shared dialog, floating combobox, validation alert and toast primitives. Application, post, region, assignment, panel, schedule, selection, medical, training and replacement relationships are chosen using human-readable, scoped registers; the underlying IDs are silent submitted values. Hard-copy receipt is restricted to the verification-officer capability and its receiving point is fixed by the server rather than selected from interview centres. Hard-copy documents are checkboxes, training instructions are repeatable fields, and bounded statuses are select/combobox controls. No JSON textarea or raw-ID/hash paste field remains on either the Operations or Verification page, and neither page renders a raw internal ID as user-facing text.
 
 ### App-wide human-reference remediation
 

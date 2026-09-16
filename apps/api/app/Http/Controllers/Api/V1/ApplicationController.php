@@ -16,6 +16,7 @@ use App\Models\RecruitmentCampaign;
 use App\Models\RecruitmentPost;
 use App\Services\ApplicationRoutingService;
 use App\Services\AuditService;
+use App\Services\PdfBrandingService;
 use App\Support\CanonicalJson;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Endroid\QrCode\Encoding\Encoding;
@@ -155,6 +156,7 @@ class ApplicationController extends Controller
         ApplicationRoutingService $routingService,
         CanonicalJson $canonicalJson,
         AuditService $audit,
+        PdfBrandingService $branding,
     ): ApplicationResource|JsonResponse {
         $data = $request->validated();
         if ($application->status === Application::StatusSubmitted || $application->submitted_at !== null) {
@@ -173,7 +175,8 @@ class ApplicationController extends Controller
         $this->assertAdministrativeAddressesValid($application);
         $this->assertEducationInstitutionsValid($application);
         $routing = $routingService->resolveDraft($application);
-        DB::transaction(function () use ($application, $data, $referenceService, $canonicalJson, $request, $audit, $routing): void {
+        $pdfBranding = $branding->assets(requireTahoma: true);
+        DB::transaction(function () use ($application, $data, $referenceService, $canonicalJson, $request, $audit, $routing, $pdfBranding): void {
             $reference = $referenceService->allocate($application);
             $snapshot = [
                 'applicant' => $application->applicant->only(['first_name', 'middle_names', 'last_name', 'date_of_birth', 'sex', 'nationality', 'primary_phone', 'email']),
@@ -198,7 +201,7 @@ class ApplicationController extends Controller
                 'application' => $application,
                 'reference' => $reference,
                 'qrDataUri' => 'data:image/svg+xml;base64,'.base64_encode($qrSvg),
-                'logoDataUri' => $this->logoDataUri(),
+                ...$pdfBranding,
             ])->setPaper('a4');
             $path = "artefacts/{$application->id}/acknowledgement.pdf";
             Storage::disk(config('erecruit.uploads.disk'))->put($path, $pdf->output());
@@ -461,15 +464,5 @@ class ApplicationController extends Controller
         }
 
         return $draftData;
-    }
-
-    private function logoDataUri(): ?string
-    {
-        $path = resource_path('brand/logo.png');
-        if (! extension_loaded('gd') || ! is_file($path)) {
-            return null;
-        }
-
-        return 'data:image/png;base64,'.base64_encode((string) file_get_contents($path));
     }
 }

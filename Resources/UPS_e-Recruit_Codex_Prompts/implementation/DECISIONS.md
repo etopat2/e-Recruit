@@ -38,4 +38,12 @@ Completion of the v1.0 software scope permits a staging/pilot release-candidate 
 
 ## ADR-010 — Headquarters hard-copy receipt authority
 
-Uganda Prisons Service Headquarters is the sole final receiving point for hard-copy applications. The dedicated headquarters hard-copy clerk role records the accountable receipt online or through a scoped offline pack. Units and regions are transmission channels only; regional officers, centre coordinators, interview centres and panels cannot search the receipt register, issue reception packs or record final receipt. The server supplies the receiving point so clients cannot redirect it.
+Uganda Prisons Service Headquarters is the sole final receiving point for hard-copy applications. An authorised verification officer records the accountable receipt online or through a scoped offline pack as part of the verification workflow; no separate clerk role exists. Units and regions are transmission channels only; regional officers, centre coordinators, interview centres and panels cannot search the receipt register, issue reception packs or record final receipt. The server supplies the receiving point so clients cannot redirect it.
+
+## ADR-011 — Versioned UPS recruitment geography
+
+The supplied planning workbook is transformed into committed, hash-verified CSV reference data after the canonical administrative hierarchy is loaded. Shared Central/Kampala Extra jurisdictions remain many-to-many, and unresolved medical-facility attribution remains nullable with source notes rather than being guessed. Historical notice dates are not imported as future schedules.
+
+## ADR-012 — Controlled official-list generation
+
+Interview, medical-examination and final-successful-candidate PDFs are generated asynchronously from current authoritative workflow records. Outputs use the supplied UPS crest and mounted licensed Tahoma files, store a SHA-256 audit value, exclude contact details, and never reproduce signatures from historical samples. Missing Tahoma files fail generation explicitly instead of allowing font substitution.

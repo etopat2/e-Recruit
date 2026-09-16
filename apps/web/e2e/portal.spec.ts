@@ -364,12 +364,12 @@ test('verification workbench keeps source evidence and accountable decision toge
   await staffSession(page)
   const workbench = {
     application: { id: 'app-1', reference: 'UPS/2026/WRD/000001', applicant_name: 'Synthetic Applicant', entered_data: { personal: { full_name: 'Synthetic Applicant', date_of_birth: '2001-05-12' }, origin: { district: 'Kampala', county: 'Kampala City', subcounty: 'Central Division', parish: 'Old Kampala', village: 'Namirembe' }, education: [{ level: 'UCE', institution: 'Synthetic School', result: 'Division 1', completion_year: 2024 }], declaration: { accepted: true } } },
-    documents: [{ id: 'doc-1', type: 'national_id', label: 'National ID', filename: 'synthetic-national-id.pdf', version: 1, preview_url: '/api/v1/documents/doc-1/download', quality: { status: 'review' }, fields: [{ field_key: 'name', raw_value: 'SYNTHETIC APPLICANT', confidence: 0.91, page_number: 1, bounding_polygon: [0, 0, 1, 1] }] }],
+    documents: [{ id: 'doc-1', type: 'national_id', label: 'National ID', filename: 'synthetic-national-id.pdf', mime_type: 'application/pdf', version: 1, preview_url: '/api/v1/documents/doc-1/preview', quality: { status: 'review' }, fields: [{ field_key: 'name', raw_value: 'SYNTHETIC APPLICANT', confidence: 0.91, page_number: 1, bounding_polygon: [0, 0, 1, 1] }] }],
     comparisons: [], verified_values: [],
     evidence_matrix: { name: [{ document_id: 'doc-1', source_label: 'National ID — version 1', source_filename: 'synthetic-national-id.pdf', value: 'SYNTHETIC APPLICANT', confidence: 0.91, page: 1, bounding_polygon: { x: 0.1, y: 0.2, width: 0.4, height: 0.05, coordinate_space: 'normalised' } }] },
   }
   await page.route('**/api/v1/applications/app-1/verification-workbench', async (route) => route.fulfill({ json: workbench }))
-  await page.route('**/api/v1/documents/doc-1/download', async (route) => route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' }))
+  await page.route('**/api/v1/documents/doc-1/preview', async (route) => route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' }))
   await page.route('**/api/v1/documents/doc-1/verification', async (route) => route.fulfill({ status: 201, json: { decision: { id: 'decision-1' } } }))
 
   await page.goto('/staff/verification/app-1')
@@ -379,7 +379,8 @@ test('verification workbench keeps source evidence and accountable decision toge
   await expect(page.locator('body')).not.toContainText('doc-1')
   const documentPane = await page.locator('.document-rail').boundingBox()
   const evidencePane = await page.locator('.evidence-panel').boundingBox()
-  expect(Math.abs(documentPane!.width - evidencePane!.width)).toBeLessThanOrEqual(1)
+  if ((page.viewportSize()?.width || 0) >= 900) expect(documentPane!.width).toBeGreaterThan(evidencePane!.width)
+  else expect(Math.abs(documentPane!.width - evidencePane!.width)).toBeLessThanOrEqual(1)
   const sourceValue = page.getByRole('button', { name: /SYNTHETIC APPLICANT.*Focus original source/i })
   await expect(sourceValue).toBeVisible()
   await sourceValue.click()
@@ -417,8 +418,8 @@ test('submitted applicant sees an auditable status timeline and secure inbox', a
   expect(results.violations.filter((violation) => ['critical', 'serious'].includes(violation.impact || ''))).toEqual([])
 })
 
-test('headquarters hard-copy clerk records a traceable physical receipt', async ({ page }) => {
-  await staffSession(page, 'hard_copy_receiving_officer')
+test('verification officer records a traceable headquarters physical receipt', async ({ page }) => {
+  await staffSession(page, 'verification_officer')
   await operationsLookups(page)
   await page.route('**/api/v1/applications/app-1/hard-copy-receipts', async (route) => {
     expect(route.request().postDataJSON()).not.toHaveProperty('receiving_office')

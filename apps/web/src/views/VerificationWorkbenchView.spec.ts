@@ -3,6 +3,10 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import VerificationWorkbenchView from './VerificationWorkbenchView.vue'
 
+vi.mock('../components/SecureDocumentPreview.vue', () => ({
+  default: { template: '<div aria-label="Protected document preview"></div>' },
+}))
+
 const applicationKey = '01RAWAPPLICATIONKEY0000000'
 const documentKey = '01RAWDOCUMENTKEY000000000'
 const districtKey = '01RAWDISTRICTKEY000000000'
@@ -23,7 +27,7 @@ beforeEach(() => {
             declaration: { accepted: true },
           },
         },
-        documents: [{ id: documentKey, type: 'national_id', label: 'National ID', filename: 'amina-national-id.pdf', version: 1, preview_url: `/api/v1/documents/${documentKey}/download`, quality: { status: 'clear' }, fields: [] }],
+        documents: [{ id: documentKey, type: 'national_id', label: 'National ID', filename: 'amina-national-id.pdf', mime_type: 'application/pdf', version: 1, preview_url: `/api/v1/documents/${documentKey}/preview`, quality: { status: 'clear' }, fields: [] }],
         comparisons: [], verified_values: [],
         evidence_matrix: { name: [{ document_id: documentKey, source_label: 'National ID - version 1', source_filename: 'amina-national-id.pdf', value: 'Amina Nabirye', confidence: 0.98, page: 1 }] },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })

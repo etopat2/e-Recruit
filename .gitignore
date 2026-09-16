@@ -16,5 +16,7 @@
 /services/document-worker/.ruff_cache/
 /services/document-worker/**/__pycache__/
 /backups/
+/infra/fonts/*.ttf
+/infra/fonts/*.otf
 /Resources/01_uganda_administrative_data_complete/
 *.local

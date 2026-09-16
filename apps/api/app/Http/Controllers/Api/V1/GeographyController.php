@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SearchAdministrativeUnitsRequest;
 use App\Models\AdministrativeUnit;
+use App\Models\MedicalFacility;
 use App\Models\PrisonRegion;
 use App\Models\RecruitmentCampaign;
 use App\Models\RecruitmentCentre;
@@ -91,7 +92,13 @@ class GeographyController extends Controller
             $response += [
                 'unit_counts' => AdministrativeUnit::query()->select('level', DB::raw('count(*) as total'))->groupBy('level')->pluck('total', 'level')->map(fn ($total): int => (int) $total),
                 'latest_import' => DB::table('administrative_unit_imports')->latest()->first(),
-                'regions' => PrisonRegion::query()->with('centres')->orderBy('name')->get(),
+                'regions' => PrisonRegion::query()->with([
+                    'centres.hostAdministrativeUnit:id,code,name,unit_type',
+                    'jurisdictions:id,code,name,unit_type',
+                    'medicalFacilities.hostAdministrativeUnit:id,code,name,unit_type',
+                ])->orderBy('name')->get(),
+                'medical_facilities' => MedicalFacility::query()->with(['region:id,code,name', 'hostAdministrativeUnit:id,code,name,unit_type'])->orderBy('name')->get(),
+                'latest_recruitment_geography_import' => DB::table('recruitment_geography_imports')->latest('imported_at')->first(),
                 'mappings' => DB::table('district_centre_mappings as mappings')
                     ->join('administrative_units as districts', 'districts.id', '=', 'mappings.district_id')
                     ->join('recruitment_centres as centres', 'centres.id', '=', 'mappings.recruitment_centre_id')
@@ -161,6 +168,7 @@ class GeographyController extends Controller
         $data = $request->validate([
             'code' => ['required', 'string', 'max:30', 'unique:prison_regions,code'],
             'name' => ['required', 'string', 'max:255'],
+            'headquarters' => ['nullable', 'string', 'max:255'],
             'active' => ['sometimes', 'boolean'],
         ]);
         $region = PrisonRegion::query()->create($data);
@@ -169,12 +177,29 @@ class GeographyController extends Controller
         return response()->json(['region' => $region], 201);
     }
 
+    public function updateRegion(Request $request, PrisonRegion $region, AuditService $audit): JsonResponse
+    {
+        $data = $request->validate([
+            'code' => ['required', 'string', 'max:30', Rule::unique('prison_regions', 'code')->ignore($region)],
+            'name' => ['required', 'string', 'max:255'],
+            'headquarters' => ['nullable', 'string', 'max:255'],
+            'active' => ['required', 'boolean'],
+        ]);
+        $before = $region->toArray();
+        $region->update($data);
+        $audit->record('geography.region_updated', $region, before: $before, after: $region->toArray(), actor: $request->user());
+
+        return response()->json(['region' => $region->fresh()]);
+    }
+
     public function storeCentre(Request $request, AuditService $audit): JsonResponse
     {
         $data = $request->validate([
             'prison_region_id' => ['required', 'exists:prison_regions,id'],
+            'host_administrative_unit_id' => ['nullable', 'exists:administrative_units,id'],
             'code' => ['required', 'string', 'max:30', 'unique:recruitment_centres,code'],
             'name' => ['required', 'string', 'max:255'],
+            'host_locality' => ['nullable', 'string', 'max:255'],
             'address' => ['required', 'string', 'max:1000'],
             'contact_phone' => ['nullable', 'string', 'max:30'],
             'daily_capacity' => ['nullable', 'integer', 'min:1', 'max:100000'],
@@ -185,7 +210,48 @@ class GeographyController extends Controller
         $centre = RecruitmentCentre::query()->create($data);
         $audit->record('geography.centre_created', $centre, after: $centre->toArray(), actor: $request->user());
 
-        return response()->json(['centre' => $centre->load('region')], 201);
+        return response()->json(['centre' => $centre->load(['region', 'hostAdministrativeUnit'])], 201);
+    }
+
+    public function updateCentre(Request $request, RecruitmentCentre $centre, AuditService $audit): JsonResponse
+    {
+        $data = $request->validate([
+            'prison_region_id' => ['required', 'exists:prison_regions,id'],
+            'host_administrative_unit_id' => ['nullable', 'exists:administrative_units,id'],
+            'code' => ['required', 'string', 'max:30', Rule::unique('recruitment_centres', 'code')->ignore($centre)],
+            'name' => ['required', 'string', 'max:255'],
+            'host_locality' => ['nullable', 'string', 'max:255'],
+            'address' => ['required', 'string', 'max:1000'],
+            'contact_phone' => ['nullable', 'string', 'max:30'],
+            'daily_capacity' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'active_from' => ['nullable', 'date'],
+            'active_to' => ['nullable', 'date', 'after_or_equal:active_from'],
+            'active' => ['required', 'boolean'],
+        ]);
+        $before = $centre->toArray();
+        $centre->update($data);
+        $audit->record('geography.centre_updated', $centre, before: $before, after: $centre->toArray(), actor: $request->user());
+
+        return response()->json(['centre' => $centre->fresh()->load(['region', 'hostAdministrativeUnit'])]);
+    }
+
+    public function storeMedicalFacility(Request $request, AuditService $audit): JsonResponse
+    {
+        $data = $this->medicalFacilityData($request);
+        $facility = MedicalFacility::query()->create($data);
+        $audit->record('geography.medical_facility_created', $facility, after: $facility->toArray(), actor: $request->user());
+
+        return response()->json(['facility' => $facility->load(['region', 'hostAdministrativeUnit'])], 201);
+    }
+
+    public function updateMedicalFacility(Request $request, MedicalFacility $medicalFacility, AuditService $audit): JsonResponse
+    {
+        $data = $this->medicalFacilityData($request, $medicalFacility);
+        $before = $medicalFacility->toArray();
+        $medicalFacility->update($data);
+        $audit->record('geography.medical_facility_updated', $medicalFacility, before: $before, after: $medicalFacility->toArray(), actor: $request->user());
+
+        return response()->json(['facility' => $medicalFacility->fresh()->load(['region', 'hostAdministrativeUnit'])]);
     }
 
     public function storeMapping(Request $request, AuditService $audit): JsonResponse
@@ -508,6 +574,21 @@ class GeographyController extends Controller
         }
 
         return [$normalised, $errors];
+    }
+
+    /** @return array<string, mixed> */
+    private function medicalFacilityData(Request $request, ?MedicalFacility $facility = null): array
+    {
+        return $request->validate([
+            'code' => ['required', 'string', 'max:30', Rule::unique('medical_facilities', 'code')->ignore($facility)],
+            'name' => ['required', 'string', 'max:255'],
+            'location' => ['required', 'string', 'max:255'],
+            'host_administrative_unit_id' => ['nullable', 'exists:administrative_units,id'],
+            'prison_region_id' => ['nullable', 'exists:prison_regions,id'],
+            'region_attribution' => ['nullable', 'string', 'max:255'],
+            'referral_rule' => ['nullable', 'string', 'max:255'],
+            'active' => ['required', 'boolean'],
+        ]);
     }
 
     private function booleanValue(mixed $value): bool|string

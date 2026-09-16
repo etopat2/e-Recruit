@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,sans-serif;color:#241b1d}h1{color:#6b1229}.header{text-align:center;border-bottom:4px solid #74163d}.logo{height:90px}.box{border:1px solid #d9c8a0;padding:18px;margin:18px 0}li{margin:7px 0}.qr{text-align:center}.qr img{height:130px;width:130px}</style></head>
+<head><meta charset="utf-8"><style>@if($tahomaRegularDataUri)@font-face{font-family:Tahoma;src:url('{{ $tahomaRegularDataUri }}') format('truetype');font-weight:400}@endif @if($tahomaBoldDataUri)@font-face{font-family:Tahoma;src:url('{{ $tahomaBoldDataUri }}') format('truetype');font-weight:700}@endif body{font-family:Tahoma,DejaVu Sans,sans-serif;color:#241b1d}h1{color:#6b1229}.header{text-align:center;border-bottom:4px solid #74163d}.logo{height:90px}.box{border:1px solid #d9c8a0;padding:18px;margin:18px 0}li{margin:7px 0}.qr{text-align:center}.qr img{height:130px;width:130px}</style></head>
 <body>
 <div class="header">@if($logoDataUri)<img class="logo" src="{{ $logoDataUri }}" alt="Uganda Prisons Service crest">@endif<h1>Uganda Prisons Service — Training Invitation</h1></div>
 <div class="box">

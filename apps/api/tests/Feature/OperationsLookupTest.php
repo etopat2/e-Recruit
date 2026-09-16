@@ -19,7 +19,7 @@ class OperationsLookupTest extends TestCase
             'reference' => 'UPS/2026/WRD/000321', 'status' => 'awaiting_hard_copies',
             'draft_data' => ['skills' => [['name' => 'Carpentry']]],
         ]);
-        $officer = User::factory()->create(['user_type' => 'hard_copy_receiving_officer']);
+        $officer = User::factory()->create(['user_type' => 'verification_officer']);
         $officer->scopes()->create(['scope_type' => 'national', 'scope_id' => null, 'allowed_tasks' => ['*']]);
         Sanctum::actingAs($officer);
         $this->getJson('/api/v1/operations/lookups')->assertOk()

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['prison_region_id', 'code', 'name', 'address', 'contact_phone', 'daily_capacity', 'active_from', 'active_to', 'active'])]
+#[Fillable(['prison_region_id', 'host_administrative_unit_id', 'code', 'name', 'host_locality', 'source_metadata', 'address', 'contact_phone', 'daily_capacity', 'active_from', 'active_to', 'active'])]
 class RecruitmentCentre extends Model
 {
     use HasUlids;
@@ -17,8 +17,13 @@ class RecruitmentCentre extends Model
         return $this->belongsTo(PrisonRegion::class, 'prison_region_id');
     }
 
+    public function hostAdministrativeUnit(): BelongsTo
+    {
+        return $this->belongsTo(AdministrativeUnit::class, 'host_administrative_unit_id');
+    }
+
     protected function casts(): array
     {
-        return ['active_from' => 'date', 'active_to' => 'date', 'active' => 'boolean'];
+        return ['active_from' => 'date', 'active_to' => 'date', 'source_metadata' => 'array', 'active' => 'boolean'];
     }
 }

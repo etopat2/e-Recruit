@@ -26,7 +26,7 @@ const definitions: Record<PackType, { label: string; action: string; entityType:
 }
 const session = useSessionStore()
 const selectableDefinitions = computed(() => (Object.entries(definitions) as Array<[PackType, { label: string; action: string; entityType: string }]>).filter(
-  ([packType]) => packType !== 'hard_copy' || session.user?.user_type === 'hard_copy_receiving_officer',
+  ([packType]) => packType !== 'hard_copy' || session.user?.user_type === 'verification_officer',
 ))
 
 const deviceId = ref(localStorage.getItem('ups_device_id') || crypto.randomUUID())

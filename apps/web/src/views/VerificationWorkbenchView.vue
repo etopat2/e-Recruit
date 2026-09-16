@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import FloatingCombobox, { type ComboboxOption } from '../components/FloatingCombobox.vue'
 import FormAlert from '../components/FormAlert.vue'
 import LoadingIndicator from '../components/LoadingIndicator.vue'
+import SecureDocumentPreview from '../components/SecureDocumentPreview.vue'
 import SkeletonBlock from '../components/SkeletonBlock.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { api, authToken, jsonBody } from '../lib/api'
+import { api, jsonBody } from '../lib/api'
 
 interface EvidenceField { field_key: string; raw_value: string; confidence: number; page_number: number; bounding_polygon: unknown }
-interface WorkbenchDocument { id: string; type: string; label: string; filename: string; version: number; preview_url: string; quality: Record<string, unknown>; fields: EvidenceField[] }
+interface WorkbenchDocument { id: string; type: string; label: string; filename: string; mime_type: string; version: number; preview_url: string; quality: Record<string, unknown>; fields: EvidenceField[] }
 interface EvidenceSource { document_id: string; source_label: string; source_filename?: string; value?: unknown; confidence?: number; page?: number; bounding_polygon?: { x?: number; y?: number; width?: number; height?: number; coordinate_space?: string } | null }
 interface Workbench { application: { id: string; reference: string; applicant_name: string; entered_data: Record<string, unknown> }; documents: WorkbenchDocument[]; comparisons: Array<Record<string, unknown>>; verified_values: Array<Record<string, unknown>>; evidence_matrix: Record<string, EvidenceSource[]> }
 
 const route = useRoute()
 const workbench = ref<Workbench | null>(null)
-const previews = ref<Record<string, string>>({})
 const selectedDocument = ref('')
 const selectedField = ref('name')
 const selectedSource = ref<EvidenceSource | null>(null)
@@ -36,20 +36,15 @@ const declarations = computed(() => {
   const values = { ...objectAt(entered.value, 'declaration'), ...objectAt(entered.value, 'declarations') }
   return visibleEntries(values)
 })
+const activeDocument = computed(() => workbench.value?.documents.find((document) => document.id === selectedDocument.value) || workbench.value?.documents[0])
 
 onMounted(load)
-onBeforeUnmount(() => Object.values(previews.value).forEach((url) => URL.revokeObjectURL(url)))
 
 async function load(): Promise<void> {
   try {
     workbench.value = await api<Workbench>(`/applications/${route.params.id}/verification-workbench`)
     selectedDocument.value = workbench.value.documents[0]?.id || ''
     selectedField.value = fieldKeys.value.includes(selectedField.value) ? selectedField.value : fieldKeys.value[0] || 'name'
-    await Promise.all(workbench.value.documents.map(async (document) => {
-      if (previews.value[document.id]) return
-      const response = await fetch(document.preview_url, { headers: { Authorization: `Bearer ${authToken()}` } })
-      if (response.ok) previews.value[document.id] = URL.createObjectURL(await response.blob())
-    }))
   } catch (problem) {
     error.value = problem instanceof Error ? problem.message : 'Workbench unavailable.'
   } finally {
@@ -159,19 +154,6 @@ function selectField(option: ComboboxOption): void {
   decision.verified_value = enteredValue(option.value) === 'Not provided' ? '' : enteredValue(option.value)
 }
 
-function previewUrl(document: WorkbenchDocument): string {
-  const url = previews.value[document.id] || ''
-  const page = selectedSource.value?.document_id === document.id ? selectedSource.value.page : undefined
-  return page ? `${url}#page=${page}&zoom=page-fit` : url
-}
-
-function markerStyle(document: WorkbenchDocument): Record<string, string> | undefined {
-  const source = selectedSource.value
-  const box = source?.bounding_polygon
-  if (!source || source.document_id !== document.id || !box || box.coordinate_space !== 'normalised') return undefined
-  const clamp = (value: number | undefined) => `${Math.max(0, Math.min(1, Number(value || 0))) * 100}%`
-  return { left: clamp(box.x), top: clamp(box.y), width: clamp(box.width), height: clamp(box.height) }
-}
 </script>
 
 <template>
@@ -179,11 +161,14 @@ function markerStyle(document: WorkbenchDocument): Record<string, string> | unde
   <FormAlert v-if="error" kind="error" :message="error" page /><FormAlert v-if="notice" kind="success" :message="notice" page />
   <section v-if="workbench" class="verification-layout">
     <div class="document-rail">
-      <article v-for="document in workbench.documents" :key="document.id" :class="['document-card', { selected: selectedDocument === document.id }]" @click="selectedDocument = document.id">
-        <div class="card-topline"><span>{{ document.label }}</span><span>Version {{ document.version }}</span></div><p class="document-filename">{{ document.filename }}</p>
-        <div v-if="previews[document.id]" class="source-preview"><iframe :src="previewUrl(document)" :title="`${document.label} original`" /><i v-if="markerStyle(document)" class="source-highlight" :style="markerStyle(document)" aria-hidden="true" /></div><div v-else class="preview-loading"><LoadingIndicator label="Loading protected preview…" /></div>
-        <p v-if="selectedSource?.document_id === document.id" class="source-focus" role="status">Focused evidence source: page {{ selectedSource.page || 1 }}<span v-if="selectedSource.bounding_polygon">, highlighted at its recorded OCR coordinates</span>.</p>
-        <div class="quality-row"><StatusBadge :status="String(document.quality?.status || 'review')" /><a v-if="previews[document.id]" :href="previews[document.id]" target="_blank" rel="noopener">Open original file</a></div>
+      <div v-if="workbench.documents.length" class="document-tabs" role="tablist" aria-label="Supporting documents">
+        <button v-for="document in workbench.documents" :key="document.id" type="button" role="tab" :aria-selected="selectedDocument === document.id" :class="{ active: selectedDocument === document.id }" @click="selectedDocument = document.id">{{ document.label }} <small>v{{ document.version }}</small></button>
+      </div>
+      <article v-if="activeDocument" class="document-card selected">
+        <div class="card-topline"><span>{{ activeDocument.label }}</span><span>Version {{ activeDocument.version }}</span></div><p class="document-filename">{{ activeDocument.filename }}</p>
+        <SecureDocumentPreview :key="activeDocument.id" :url="activeDocument.preview_url" :filename="activeDocument.filename" :mime-type="activeDocument.mime_type" :focused-page="selectedSource?.document_id === activeDocument.id ? selectedSource.page : undefined" :highlight="selectedSource?.document_id === activeDocument.id ? selectedSource.bounding_polygon : null" />
+        <p v-if="selectedSource?.document_id === activeDocument.id" class="source-focus" role="status">Focused evidence source: page {{ selectedSource.page || 1 }}<span v-if="selectedSource.bounding_polygon">, highlighted at its recorded OCR coordinates</span>.</p>
+        <div class="quality-row"><StatusBadge :status="String(activeDocument.quality?.status || 'review')" /><span>Protected preview</span></div>
       </article>
       <p v-if="!workbench.documents.length" class="empty-state">No supporting documents have been uploaded.</p>
     </div>

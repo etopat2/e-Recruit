@@ -103,6 +103,7 @@ Do not reset the restore-drill identity for routine use; create a normal synthet
 - Node.js 22 when running frontend/contract checks directly on the host.
 - Chromium installed by Playwright with `npx playwright install chromium`.
 - An authenticator application for privileged staff MFA testing.
+- Licensed Tahoma regular and bold font files for official PDF generation. The repository does not redistribute these proprietary files.
 
 Host XAMPP Apache may already occupy port `8080`. Either stop Apache while testing e-Recruit or set `APP_PORT` in the root `.env` to an unused port such as `8088`.
 
@@ -134,7 +135,16 @@ Run these commands from the repository root.
 
 4. Ensure `apps/api/.env` contains `APP_TIMEZONE=Africa/Kampala`, an empty `APP_KEY` on first start, and `SEED_DEMO_USERS=false` unless the optional demo accounts are intentionally required.
 
-5. Build and start the services:
+5. Place the licensed Tahoma files where Compose can mount them. On a Windows workstation that is licensed for the fonts:
+
+   ```powershell
+   Copy-Item C:\Windows\Fonts\tahoma.ttf infra\fonts\tahoma.ttf
+   Copy-Item C:\Windows\Fonts\tahomabd.ttf infra\fonts\tahomabd.ttf
+   ```
+
+   Set `TAHOMA_FONT_DIR` to another approved directory when the files are supplied by a managed font store. Font binaries are ignored by Git.
+
+6. Build and start the services:
 
    ```powershell
    docker compose build
@@ -142,7 +152,7 @@ Run these commands from the repository root.
    docker compose ps
    ```
 
-6. Generate the Laravel encryption key. This writes only to the ignored local `apps/api/.env`:
+7. Generate the Laravel encryption key. This writes only to the ignored local `apps/api/.env`:
 
    ```powershell
    docker compose exec -T api php artisan key:generate --force
@@ -151,22 +161,23 @@ Run these commands from the repository root.
 
    Docker reads `env_file` values when it creates a container. Recreating these three services is required so the API server, queue worker, and scheduler all receive the newly generated key. Do not generate another key when `APP_KEY` is already populated; preserve that key so existing encrypted records remain readable.
 
-7. Create the schema and reference seed data:
+8. Create the schema and reference seed data:
 
    ```powershell
    docker compose exec -T api php artisan migrate --seed --force
    docker compose exec -T api php artisan erecruit:import-uganda-administrative-units
+   docker compose exec -T api php artisan erecruit:import-ups-recruitment-geography
    docker compose exec -T api php artisan erecruit:sync-education-institutions
    ```
 
-   The administrative command must report 84,627 imported administrative units and 353 skipped electoral units. The institution command fetches all current NCHE, MoES TVET, primary and secondary institutions; EMIS uses bounded pages with periodic session renewal and may take several minutes on its first run. Both commands are safe to rerun after a source-data refresh. Verify the database counts and latest source hash:
+   The administrative command must report 84,627 imported administrative units and 353 skipped electoral units. The UPS geography command must report 19 regions, 151 jurisdictions, 19 centres, 146 district-centre mappings and 17 medical facilities. The institution command fetches all current NCHE, MoES TVET, primary and secondary institutions; EMIS uses bounded pages with periodic session renewal and may take several minutes on its first run. All three commands are safe to rerun. Verify the database counts and latest source hash:
 
    ```powershell
    docker compose exec -T api php artisan tinker --execute="dump(DB::table('administrative_units')->where('source', 'uganda_admin_complete_v1')->where('active', true)->count(), DB::table('administrative_unit_paths')->count(), DB::table('administrative_unit_imports')->latest()->first());"
    docker compose exec -T api php artisan tinker --execute="dump(DB::table('education_institutions')->where('active', true)->count(), DB::table('education_institutions')->selectRaw('source, count(*) AS total')->groupBy('source')->pluck('total', 'source'));"
    ```
 
-8. Check readiness:
+9. Check readiness:
 
    ```powershell
    Invoke-RestMethod http://localhost:8080/api/v1/health/live
@@ -175,7 +186,7 @@ Run these commands from the repository root.
 
    Replace `8080` with the configured `APP_PORT`. The ready response must show `database`, `cache`, and `storage` as healthy.
 
-9. Open the services:
+10. Open the services:
 
    | Service | Default address |
    |---|---|
@@ -203,6 +214,7 @@ The root file controls Docker Compose infrastructure and host ports.
 | `MINIO_ROOT_PASSWORD` | Required replacement | Local object-store secret key |
 | `MINIO_BUCKET` | `erecruit-private` | Private document bucket |
 | `DOCUMENT_WORKER_TOKEN` | Required replacement | Shared API-to-worker authentication secret |
+| `TAHOMA_FONT_DIR` | `./infra/fonts` | Host directory containing licensed `tahoma.ttf` and `tahomabd.ttf` for read-only mounting |
 | `APP_PORT` | `8080` | Same-origin nginx host port |
 | `WEB_PORT` | `5173` | Vite host port |
 | `API_PORT` | `8000` | Direct API host port |
@@ -255,6 +267,7 @@ These are the e-Recruit-specific API settings. Standard Laravel driver alternati
 | `DOCUMENT_WORKER_URL` | `http://document-worker:8001` | Internal OCR worker URL |
 | `DOCUMENT_WORKER_TOKEN` | Match root token | Worker request authentication |
 | `DOCUMENT_WORKER_TIMEOUT_SECONDS` | `60` | API wait limit for worker calls |
+| `PDF_TAHOMA_REGULAR_PATH`, `PDF_TAHOMA_BOLD_PATH` | `/opt/erecruit/fonts/...` | Container paths used by official Tahoma PDF workers |
 | `MALWARE_SCANNER` | `development` locally | Development signature checks; production requires `clamav` |
 | `CLAMAV_HOST`, `CLAMAV_PORT` | `clamav`, `3310` | ClamAV service connection |
 | `OFFLINE_PACK_EXPIRY_HOURS` | `24` | Default offline-pack validity |
@@ -364,12 +377,13 @@ Use separate browser profiles for independent actors and use only synthetic iden
 2. Applicant: register, search and select a village to auto-populate its full administrative address, repeat using the district-down cascading selectors, save/resume a draft, upload allowed documents, review, submit, download acknowledgement, view status/inbox, and create a helpdesk ticket.
 3. HQ administrator: configure/clone/publish a campaign, create/edit/deactivate/delete unreferenced administrative units at every hierarchy level, confirm referenced units cannot be deleted, import geography, create schedules, run selection scenarios, and inspect operational reports.
 4. Verification officer: focus the protected original and OCR source highlight, compare evidence, and record a reasoned versioned decision.
-5. Headquarters hard-copy clerk: create a named account with the `Headquarters Hard-copy Clerk` role and an approved campaign or national scope, search a submitted application, record its checklist, and confirm the receiving point is fixed as Uganda Prisons Service Headquarters. Repeat with regional, centre, panel, and data-clerk accounts and confirm none can search or record final receipt.
+5. Verification officer: use a named account with the `Verification Officer` role and an approved campaign or national scope, search a submitted application, record its checklist, and confirm the receiving point is fixed as Uganda Prisons Service Headquarters. Repeat with regional, centre, panel, and data-clerk accounts and confirm none can search or record final receipt.
 6. Panel head: enrol MFA, record/aggregate scoring, reconcile offline work, close the panel, and confirm post-close immutability.
 7. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.
 8. Auditor: enrol MFA, verify the audit hash chain, inspect integrity flags, and confirm decision actions remain forbidden.
 9. Offline field mode: issue a scoped pack, choose a local PIN, reload to verify it locks, sync idempotently, and resolve a protected-field conflict with an independent authorised account.
-10. Confirm messages appear in Mailpit and private documents cannot be opened without a valid authenticated API token.
+10. HQ administrator or Prisons Council secretariat: generate each official recruitment-list layout, wait for the queue status to become `ready`, compare the displayed SHA-256, and inspect logo, Tahoma typography, wrapping, pagination and data against the selected workflow records. Confirm the auditor can download but cannot generate.
+11. Confirm messages appear in Mailpit and private documents and byte-range previews cannot be opened without a valid authenticated API token.
 
 The six demo accounts do not represent every operational role. Tests for headquarters hard-copy receipt, attendance, Council approval, training-school processing and other roles use isolated factories. Create additional named staff accounts through the audited technical administration screen; do not assign several human testers to one shared credential.
 
@@ -401,6 +415,7 @@ Start from `.env.production.example`; store the real file outside Git with mode 
 | `REDIS_PASSWORD` | Independent injected Redis secret |
 | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_BUCKET` | Private object-store credentials/bucket |
 | `BACKUP_ROOT` | Approved encrypted off-host backup destination for operational scripts |
+| `TAHOMA_FONT_DIR` | Absolute approved host directory containing licensed Tahoma regular/bold files; required by production Compose |
 
 ### Documents and OCR
 
@@ -412,6 +427,7 @@ Start from `.env.production.example`; store the real file outside Git with mode 
 | `OCR_ENGINE`, `TESSERACT_CMD` | Approved engine/executable, defaults to Tesseract |
 | `OCR_TIMEOUT_SECONDS` | Worker processing timeout, default `45` |
 | `MAX_PDF_PAGES` | Default `20` |
+| `PDF_TAHOMA_REGULAR_PATH`, `PDF_TAHOMA_BOLD_PATH` | Read-only container font paths, normally `/opt/erecruit/fonts/tahoma.ttf` and `/opt/erecruit/fonts/tahomabd.ttf` |
 | `MIN_IMAGE_WIDTH`, `MIN_IMAGE_HEIGHT` | Default `640` × `480` |
 | `MALWARE_SCANNER` | Must be `clamav` for production |
 | `CLAMAV_HOST`, `CLAMAV_PORT` | Internal scanner address, defaults `clamav:3310` |

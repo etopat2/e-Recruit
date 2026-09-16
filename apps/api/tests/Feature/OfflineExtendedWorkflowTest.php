@@ -19,7 +19,7 @@ class OfflineExtendedWorkflowTest extends TestCase
     public function test_hard_copy_pack_is_self_identifying_idempotent_and_revocable(): void
     {
         $fixture = $this->recruitmentFixture(['status' => 'awaiting_hard_copies', 'reference' => 'UPS/TEST/000001']);
-        $officer = User::factory()->create(['user_type' => 'hard_copy_receiving_officer']);
+        $officer = User::factory()->create(['user_type' => 'verification_officer']);
         $officer->scopes()->create(['scope_type' => 'campaign', 'scope_id' => $fixture['campaign']->id, 'allowed_tasks' => ['*']]);
         $deviceId = $this->device($officer);
         Sanctum::actingAs($officer);
@@ -78,7 +78,7 @@ class OfflineExtendedWorkflowTest extends TestCase
     public function test_offline_pack_records_are_selected_from_an_authorised_human_directory(): void
     {
         $fixture = $this->recruitmentFixture(['status' => 'awaiting_hard_copies', 'reference' => 'UPS/TEST/000002']);
-        $officer = User::factory()->create(['user_type' => 'hard_copy_receiving_officer']);
+        $officer = User::factory()->create(['user_type' => 'verification_officer']);
         $officer->scopes()->create(['scope_type' => 'campaign', 'scope_id' => $fixture['campaign']->id, 'allowed_tasks' => ['*']]);
         Sanctum::actingAs($officer);
 

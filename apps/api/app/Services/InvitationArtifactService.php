@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Storage;
 
 class InvitationArtifactService
 {
+    public function __construct(private readonly PdfBrandingService $branding) {}
+
     /** @param array<string, mixed> $data
      * @return array{path: string, sha256: string}
      */
@@ -26,11 +28,11 @@ class InvitationArtifactService
             roundBlockSizeMode: RoundBlockSizeMode::Margin,
         );
         $qrSvg = (new SvgWriter)->write($qrCode)->getString();
-        $logoPath = resource_path('brand/logo.png');
+        $branding = $this->branding->assets(requireTahoma: true);
         $bytes = Pdf::loadView($view, [
             ...$data,
+            ...$branding,
             'qrDataUri' => 'data:image/svg+xml;base64,'.base64_encode($qrSvg),
-            'logoDataUri' => extension_loaded('gd') && is_file($logoPath) ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath)) : null,
         ])->setPaper('a4')->output();
         Storage::disk(config('erecruit.uploads.disk'))->put($path, $bytes);
 

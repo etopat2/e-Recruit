@@ -21,18 +21,22 @@ For the verified local account inventory, demo credentials, every supported envi
 ```sh
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env
+# Copy licensed tahoma.ttf and tahomabd.ttf into infra/fonts/ (not committed)
 docker compose build
 docker compose up -d
 docker compose exec api php artisan key:generate --force
 docker compose up -d --force-recreate api queue scheduler
 docker compose exec api php artisan migrate --seed --force
 docker compose exec api php artisan erecruit:import-uganda-administrative-units
+docker compose exec api php artisan erecruit:import-ups-recruitment-geography
 docker compose exec api php artisan erecruit:sync-education-institutions
 ```
 
 Open `http://localhost:8080`. Mailpit is at `http://localhost:8026` and MinIO development console at `http://localhost:9011`.
 
-The Uganda administrative import loads the canonical region-to-village hierarchy and explicitly excludes electoral constituencies. Applicants can search for a village to populate its full administrative path or use cascading district-down selectors. Administrators maintain every level at `/staff/geography`; the import is idempotent and records its source SHA-256 and excluded-electoral count. The institution synchronization imports the official NCHE, MoES TVET and MoES EMIS directories into indexed local tables so qualification-form searches do not wait on external services; the scheduler refreshes them weekly.
+The Uganda administrative import loads the canonical region-to-village hierarchy and explicitly excludes electoral constituencies. The second idempotent import loads the versioned UPS prison regions, district/city jurisdictions, recruitment centres, district routing and medical facilities derived from the supplied planning workbook, while retaining source hashes and ambiguity notes. Applicants can search for a village to populate its full administrative path or use cascading district-down selectors. Administrators maintain this reference data at `/staff/geography`. The institution synchronization imports the official NCHE, MoES TVET and MoES EMIS directories into indexed local tables so qualification-form searches do not wait on external services; the scheduler refreshes them weekly.
+
+Official interview, medical-examination and final-successful-candidate lists are generated asynchronously from current workflow records at `/staff/recruitment-documents`. The PDFs use `Resources/logo.png` and require licensed Tahoma regular/bold files mounted through `TAHOMA_FONT_DIR`; the font binaries are intentionally excluded from Git.
 
 Demo staff accounts are disabled by default. For an isolated development database only, set `SEED_DEMO_USERS=true` in `apps/api/.env`, reseed, and immediately change the documented development-only password `ChangeMe!2026`. The seeded technical account is `system_administrator@example.test`; privileged accounts require MFA and every demo account is forced to replace its password before application access. Technical account management is available at `/staff/users` and all mutations are audited.
 

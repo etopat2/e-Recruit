@@ -16,7 +16,7 @@ class HardCopyController extends Controller
     public function store(Request $request, Application $application, AuditService $audit): JsonResponse
     {
         $this->authorize('view', $application);
-        abort_unless($request->user()->hasRole('hard_copy_receiving_officer'), 403, 'Only an authorised headquarters hard-copy clerk may record final receipt.');
+        abort_unless($request->user()->hasRole('verification_officer'), 403, 'Only an authorised verification officer may record final headquarters receipt.');
         $data = $request->validate([
             'received_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],

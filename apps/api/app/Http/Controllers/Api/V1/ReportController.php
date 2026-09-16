@@ -3,16 +3,24 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateRecruitmentListDocumentJob;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
+    private const RecruitmentDocumentTypes = [
+        'interview_shortlist',
+        'medical_examination_shortlist',
+        'final_successful_candidates',
+    ];
+
     public function dashboard(Request $request): JsonResponse
     {
         abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'prisons_council_secretariat', 'executive_viewer', 'auditor'), 403);
@@ -121,6 +129,76 @@ class ReportController extends Controller
 
         return Storage::disk(config('erecruit.uploads.disk'))->download($record->storage_path, "{$record->export_type}-{$export}.csv", [
             'Content-Type' => 'text/csv',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    public function recruitmentDocuments(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'prisons_council_secretariat', 'auditor'), 403);
+        $documents = DB::table('exports')
+            ->join('users', 'users.id', '=', 'exports.requested_by')
+            ->whereIn('exports.export_type', self::RecruitmentDocumentTypes)
+            ->orderByDesc('exports.created_at')
+            ->limit(100)
+            ->get([
+                'exports.id', 'exports.export_type', 'exports.title', 'exports.scope', 'exports.filters', 'exports.purpose', 'exports.status',
+                'exports.sha256', 'exports.failure_reason', 'exports.completed_at', 'exports.expires_at', 'exports.created_at', 'users.name as requested_by_name',
+            ])
+            ->map(function (object $document): array {
+                $scope = json_decode($document->scope, true, flags: JSON_THROW_ON_ERROR);
+                $filters = $document->filters === null ? [] : json_decode($document->filters, true, flags: JSON_THROW_ON_ERROR);
+
+                return [...(array) $document, 'scope' => $scope, 'filters' => $filters];
+            });
+
+        return response()->json(['data' => $documents]);
+    }
+
+    public function generateRecruitmentDocument(Request $request, AuditService $audit): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'prisons_council_secretariat'), 403);
+        $data = $request->validate([
+            'document_type' => ['required', Rule::in(self::RecruitmentDocumentTypes)],
+            'recruitment_post_id' => ['required', 'exists:recruitment_posts,id'],
+            'purpose' => ['required', 'string', 'min:10', 'max:1000'],
+        ]);
+        $campaignId = DB::table('recruitment_posts')->where('id', $data['recruitment_post_id'])->value('recruitment_campaign_id');
+        $id = (string) Str::ulid();
+        DB::table('exports')->insert([
+            'id' => $id,
+            'requested_by' => $request->user()->id,
+            'export_type' => $data['document_type'],
+            'title' => str($data['document_type'])->replace('_', ' ')->title(),
+            'format' => 'pdf',
+            'scope' => json_encode(['campaign_id' => $campaignId, 'recruitment_post_id' => $data['recruitment_post_id']], JSON_THROW_ON_ERROR),
+            'filters' => json_encode([], JSON_THROW_ON_ERROR),
+            'masking_policy' => json_encode([
+                'interview_nin' => $data['document_type'] === 'interview_shortlist' ? 'full_official_list' : 'last_five_characters',
+                'contact_details' => 'excluded',
+            ], JSON_THROW_ON_ERROR),
+            'purpose' => $data['purpose'],
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        GenerateRecruitmentListDocumentJob::dispatch($id);
+        $audit->record('official_list.queued', 'export', $id, actor: $request->user(), after: ['type' => $data['document_type'], 'post_id' => $data['recruitment_post_id']], reason: $data['purpose']);
+
+        return response()->json(['document_id' => $id, 'status' => 'pending'], 202);
+    }
+
+    public function downloadRecruitmentDocument(Request $request, string $export, AuditService $audit): StreamedResponse
+    {
+        abort_unless($request->user()->hasRole('hq_recruitment_administrator', 'prisons_council_secretariat', 'auditor'), 403);
+        $record = DB::table('exports')->where('id', $export)->whereIn('export_type', self::RecruitmentDocumentTypes)->firstOrFail();
+        abort_unless($record->status === 'ready' && $record->storage_path !== null, 409, 'The official list is not ready for download.');
+        abort_if($record->expires_at !== null && now()->isAfter($record->expires_at), 410, 'This generated copy has expired; generate a current copy.');
+        $audit->record('official_list.downloaded', 'export', $export, actor: $request->user(), after: ['sha256' => $record->sha256], reason: $record->purpose);
+        $filename = $record->export_type.'-'.$export.'.pdf';
+
+        return Storage::disk(config('erecruit.uploads.disk'))->download($record->storage_path, $filename, [
+            'Content-Type' => 'application/pdf',
             'Cache-Control' => 'private, no-store',
         ]);
     }

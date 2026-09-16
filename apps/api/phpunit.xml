@@ -31,6 +31,8 @@
         <env name="DOCUMENT_DISK" value="local" force="true"/>
         <env name="FILESYSTEM_DISK" value="local" force="true"/>
         <env name="MALWARE_SCANNER" value="development" force="true"/>
+        <env name="PDF_TAHOMA_REGULAR_PATH" value="vendor/dompdf/dompdf/lib/fonts/DejaVuSans.ttf" force="true"/>
+        <env name="PDF_TAHOMA_BOLD_PATH" value="vendor/dompdf/dompdf/lib/fonts/DejaVuSans-Bold.ttf" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
@@ -49,6 +51,8 @@
         <server name="DOCUMENT_DISK" value="local"/>
         <server name="FILESYSTEM_DISK" value="local"/>
         <server name="MALWARE_SCANNER" value="development"/>
+        <server name="PDF_TAHOMA_REGULAR_PATH" value="vendor/dompdf/dompdf/lib/fonts/DejaVuSans.ttf"/>
+        <server name="PDF_TAHOMA_BOLD_PATH" value="vendor/dompdf/dompdf/lib/fonts/DejaVuSans-Bold.ttf"/>
         <server name="QUEUE_CONNECTION" value="sync"/>
         <server name="SESSION_DRIVER" value="array"/>
     </php>

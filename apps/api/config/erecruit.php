@@ -50,6 +50,10 @@ return [
             'Report at the stated centre before the reporting time.',
         ],
     ],
+    'pdf' => [
+        'tahoma_regular_path' => env('PDF_TAHOMA_REGULAR_PATH', '/opt/erecruit/fonts/tahoma.ttf'),
+        'tahoma_bold_path' => env('PDF_TAHOMA_BOLD_PATH', '/opt/erecruit/fonts/tahomabd.ttf'),
+    ],
     'institution_directory' => [
         'maximum_results' => 7,
         'search_cache_hours' => (int) env('INSTITUTION_SEARCH_CACHE_HOURS', 24),
