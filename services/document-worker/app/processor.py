@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 from dataclasses import dataclass
+from datetime import date
 from io import BytesIO
 
 import cv2
@@ -173,8 +174,7 @@ class DocumentProcessor:
         blur_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
         overexposure_ratio = float(np.mean(gray >= 245))
         low_resolution = (
-            width < self.settings.min_image_width
-            or height < self.settings.min_image_height
+            width < self.settings.min_image_width or height < self.settings.min_image_height
         )
         edge_pixels = np.concatenate([gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]])
         probable_clipping = float(np.mean(edge_pixels < 235)) > 0.35
@@ -224,7 +224,11 @@ class DocumentProcessor:
     def _extract_fields(text: str, pages: list[PageResult]) -> list[ExtractedField]:
         patterns = {
             "nin": r"\b[A-Z]{2}\d{8,12}[A-Z0-9]{1,4}\b",
-            "dob": r"\b(?:0?[1-9]|[12]\d|3[01])[-/.](?:0?[1-9]|1[0-2])[-/.](?:19|20)\d{2}\b",
+            "dob": (
+                r"\b(?P<day>0?[1-9]|[12]\d|3[01])(?P<separator>[-/.])"
+                r"(?P<month>0?[1-9]|1[0-2])(?P=separator)"
+                r"(?P<year>(?:19|20)\d{2})\b"
+            ),
             "index_number": (
                 r"\b(?:INDEX(?:\s+NO(?:\.|:)?|\s+NUMBER)?\s*)?"
                 r"([A-Z0-9]{4,}[/-][A-Z0-9/.-]+)\b"
@@ -235,10 +239,22 @@ class DocumentProcessor:
         for key, pattern in patterns.items():
             match = re.search(pattern, text.upper())
             if match:
+                if key == "dob":
+                    try:
+                        date(
+                            int(match.group("year")),
+                            int(match.group("month")),
+                            int(match.group("day")),
+                        )
+                    except ValueError:
+                        continue
+                    value = match.group(0)
+                else:
+                    value = match.group(1) if match.lastindex else match.group(0)
                 fields.append(
                     ExtractedField(
                         key=key,
-                        value=match.group(1) if match.lastindex else match.group(0),
+                        value=value,
                         confidence=mean_confidence,
                     )
                 )

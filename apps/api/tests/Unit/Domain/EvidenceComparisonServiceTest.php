@@ -28,4 +28,19 @@ class EvidenceComparisonServiceTest extends TestCase
 
         $this->assertSame(EvidenceComparisonService::LowConfidence, $result['overall']);
     }
+
+    public function test_national_id_date_is_compared_as_day_month_year(): void
+    {
+        $matching = (new EvidenceComparisonService)->compare('dob', [
+            'entered' => '2001-12-07',
+            'national_id' => ['value' => '07.12.2001', 'confidence' => 0.99],
+        ]);
+        $monthFirstInterpretation = (new EvidenceComparisonService)->compare('dob', [
+            'entered' => '2001-07-12',
+            'national_id' => ['value' => '07.12.2001', 'confidence' => 0.99],
+        ]);
+
+        $this->assertSame(EvidenceComparisonService::Consistent, $matching['overall']);
+        $this->assertSame(EvidenceComparisonService::Discrepancy, $monthFirstInterpretation['overall']);
+    }
 }

@@ -433,8 +433,18 @@ test('verification workbench keeps source evidence and accountable decision toge
   await expect(page.locator('body')).not.toContainText('doc-1')
   const documentPane = await page.locator('.document-rail').boundingBox()
   const evidencePane = await page.locator('.evidence-panel').boundingBox()
-  if ((page.viewportSize()?.width || 0) >= 900) expect(documentPane!.width).toBeGreaterThan(evidencePane!.width)
-  else expect(Math.abs(documentPane!.width - evidencePane!.width)).toBeLessThanOrEqual(1)
+  if ((page.viewportSize()?.width || 0) >= 900) {
+    expect(documentPane!.width).toBeGreaterThan(evidencePane!.width)
+    const documentRail = page.locator('.document-rail')
+    const documentTabs = page.locator('.document-tabs')
+    const tabsTop = (await documentTabs.boundingBox())!.y
+    await documentRail.evaluate((element) => element.scrollTo({ top: 320 }))
+    await expect.poll(async () => (await documentTabs.boundingBox())!.y).toBeCloseTo(tabsTop, 0)
+    expect(await documentRail.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    await documentRail.evaluate((element) => element.scrollTo({ top: 0 }))
+  } else {
+    expect(Math.abs(documentPane!.width - evidencePane!.width)).toBeLessThanOrEqual(1)
+  }
   const sourceValue = page.getByRole('button', { name: /SYNTHETIC APPLICANT.*Focus original source/i })
   await expect(sourceValue).toBeVisible()
   await sourceValue.click()
