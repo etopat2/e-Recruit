@@ -6,13 +6,15 @@ use RuntimeException;
 
 class PdfBrandingService
 {
-    /** @return array{logoDataUri: string, officialHeaderDataUri: string, tahomaRegularDataUri: ?string, tahomaBoldDataUri: ?string} */
-    public function assets(bool $requireTahoma = false): array
+    /** @return array{logoDataUri: string, nationalEmblemDataUri: ?string, tahomaRegularDataUri: ?string, tahomaBoldDataUri: ?string} */
+    public function assets(bool $requireTahoma = false, bool $requireNationalEmblem = false): array
     {
         $logoPath = resource_path('brand/logo.png');
-        $officialHeaderPath = resource_path('brand/official-document-header.jpg');
+        $nationalEmblemPath = resource_path('brand/uganda-national-emblem.png');
         throw_unless(is_file($logoPath), RuntimeException::class, 'The official Uganda Prisons Service logo is unavailable.');
-        throw_unless(is_file($officialHeaderPath), RuntimeException::class, 'The official document header asset is unavailable.');
+        if ($requireNationalEmblem) {
+            throw_unless(is_file($nationalEmblemPath), RuntimeException::class, 'The Uganda national emblem is unavailable.');
+        }
         $regular = $this->fontDataUri((string) config('erecruit.pdf.tahoma_regular_path'));
         $bold = $this->fontDataUri((string) config('erecruit.pdf.tahoma_bold_path'));
         if ($requireTahoma && ($regular === null || $bold === null)) {
@@ -21,7 +23,7 @@ class PdfBrandingService
 
         return [
             'logoDataUri' => 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath)),
-            'officialHeaderDataUri' => 'data:image/jpeg;base64,'.base64_encode((string) file_get_contents($officialHeaderPath)),
+            'nationalEmblemDataUri' => $requireNationalEmblem ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($nationalEmblemPath)) : null,
             'tahomaRegularDataUri' => $regular,
             'tahomaBoldDataUri' => $bold,
         ];

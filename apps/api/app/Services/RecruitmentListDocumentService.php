@@ -33,7 +33,7 @@ class RecruitmentListDocumentService
             'medical_examination_shortlist' => 'List of Selected Candidates for Medical Examination',
             'final_successful_candidates' => 'List of Successful Candidates',
         };
-        $branding = $this->branding->assets(requireTahoma: true);
+        $branding = $this->branding->assets(requireTahoma: true, requireNationalEmblem: true);
         $facilities = DB::table('medical_facilities')->where('active', true)->orderBy('code')->get(['code', 'name', 'location']);
         $schedules = DB::table('medical_schedules')->where('recruitment_post_id', $post->id)->orderBy('scheduled_date')->orderBy('reporting_time')->get();
         $training = DB::table('training_invites')

@@ -382,7 +382,7 @@ Use separate browser profiles for independent actors and use only synthetic iden
 7. Medical officer: enrol MFA and verify restricted medical notes are invisible to non-medical roles.
 8. Auditor: enrol MFA, verify the audit hash chain, inspect integrity flags, and confirm decision actions remain forbidden.
 9. Offline field mode: issue a scoped pack, choose a local PIN, reload to verify it locks, sync idempotently, and resolve a protected-field conflict with an independent authorised account.
-10. HQ administrator or Prisons Council secretariat: generate each official recruitment-list layout, wait for the queue status to become `ready`, compare the displayed SHA-256, and inspect logo, Tahoma typography, wrapping, pagination and data against the selected workflow records. Confirm the auditor can download but cannot generate.
+10. HQ administrator or Prisons Council secretariat: generate each official recruitment-list layout, wait for the queue status to become `ready`, compare the displayed SHA-256, and inspect the separately rendered UPS logo and Uganda national emblem, Tahoma typography, wrapping, pagination and data against the selected workflow records. Confirm the auditor can download but cannot generate.
 11. Confirm messages appear in Mailpit and private documents and byte-range previews cannot be opened without a valid authenticated API token.
 
 The six demo accounts do not represent every operational role. Tests for headquarters hard-copy receipt, attendance, Council approval, training-school processing and other roles use isolated factories. Create additional named staff accounts through the audited technical administration screen; do not assign several human testers to one shared credential.

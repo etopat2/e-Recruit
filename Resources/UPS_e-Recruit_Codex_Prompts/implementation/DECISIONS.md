@@ -46,4 +46,4 @@ The supplied planning workbook is transformed into committed, hash-verified CSV 
 
 ## ADR-012 — Controlled official-list generation
 
-Interview, medical-examination and final-successful-candidate PDFs are generated asynchronously from current authoritative workflow records. Outputs use the supplied UPS crest and mounted licensed Tahoma files, store a SHA-256 audit value, exclude contact details, and never reproduce signatures from historical samples. Missing Tahoma files fail generation explicitly instead of allowing font substitution.
+Interview, medical-examination and final-successful-candidate PDFs are generated asynchronously from current authoritative workflow records. Outputs compose the supplied UPS logo and separately supplied Uganda national emblem without cropping either from another mark, use mounted licensed Tahoma files, store a SHA-256 audit value, exclude contact details, and never reproduce signatures from historical samples. Missing Tahoma files fail generation explicitly instead of allowing font substitution.

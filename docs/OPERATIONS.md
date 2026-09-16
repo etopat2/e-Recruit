@@ -31,7 +31,7 @@ After the canonical Uganda administrative hierarchy is present, run `php artisan
 
 1. Confirm the post's interview assignments, latest certified selection run, or Council-approved final selections are complete for the intended list.
 2. Open **Official lists**, select the post and layout, state the accountable purpose, and queue generation. HQ recruitment administrators and Prisons Council secretariat may generate; auditors have read-only access to the register and downloads.
-3. Wait for `ready`, then download the protected PDF and verify the displayed SHA-256 against the register. The worker excludes contact details, limits NIN exposure by document type, uses the supplied UPS crest and Tahoma, and never copies a historical handwritten signature.
+3. Wait for `ready`, then download the protected PDF and verify the displayed SHA-256 against the register. The worker excludes contact details, limits NIN exposure by document type, renders the supplied UPS logo and Uganda national emblem as separate source assets, uses Tahoma, and never copies a historical handwritten signature.
 4. Treat every generated file as a time-bound controlled copy. Regenerate after source records change; investigate `failed` entries through the queue log and the visible failure reason.
 
 ## Interview allocation runbook

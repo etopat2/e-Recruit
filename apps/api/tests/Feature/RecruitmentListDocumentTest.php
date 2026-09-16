@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\GenerateRecruitmentListDocumentJob;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\PdfBrandingService;
 use App\Services\RecruitmentListDocumentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,20 @@ class RecruitmentListDocumentTest extends TestCase
 {
     use CreatesRecruitmentFixtures;
     use RefreshDatabase;
+
+    public function test_pdf_branding_uses_the_supplied_national_emblem_as_a_separate_asset(): void
+    {
+        $path = resource_path('brand/uganda-national-emblem.png');
+        $this->assertFileExists($path);
+        $this->assertSame('5bd9d744bc74868731c4e045909fea6f352dd0c8d6bdb1361ae001d89637cd63', hash_file('sha256', $path));
+
+        $assets = app(PdfBrandingService::class)->assets(requireNationalEmblem: true);
+        $encoded = str($assets['nationalEmblemDataUri'])->after('base64,')->toString();
+
+        $this->assertSame(file_get_contents($path), base64_decode($encoded, true));
+        $this->assertArrayNotHasKey('officialHeaderDataUri', $assets);
+        $this->assertNull(app(PdfBrandingService::class)->assets()['nationalEmblemDataUri']);
+    }
 
     public function test_hq_administrator_can_queue_a_tahoma_official_list(): void
     {

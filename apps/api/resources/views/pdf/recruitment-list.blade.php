@@ -9,7 +9,12 @@
         * { box-sizing: border-box; }
         body { margin: 0; color: #000; font-family: Tahoma, sans-serif; font-size: 8.4pt; line-height: 1.25; }
         .cover, .list-header { display: block; width: 100%; }
-        .official-header { width: 100%; min-height: 29mm; background-position: center top; background-repeat: no-repeat; background-size: contain; text-align: center; }
+        .official-header { width: 100%; min-height: 29mm; border-collapse: collapse; table-layout: fixed; }
+        .official-header td { padding: 0; border: 0; background: #fff !important; vertical-align: middle; }
+        .official-header .mark-cell { width: 27mm; text-align: center; }
+        .official-header .service-name { font-size: 12.5pt; font-weight: 700; letter-spacing: -.2pt; text-align: center; white-space: nowrap; }
+        .official-header .ups-mark { width: 17mm; max-height: 25mm; }
+        .official-header .national-emblem { width: 24mm; max-height: 25mm; }
         .document-title { margin: 2mm 0 0; font-size: 12pt; font-weight: 700; text-transform: uppercase; }
         .post-title { margin: 1mm 0; font-size: 10pt; font-weight: 700; text-transform: uppercase; }
         .cover { page-break-after: always; font-size: 10.5pt; line-height: 1.42; }
@@ -44,9 +49,9 @@
 </head>
 <body>
 @php
-    $officialHeader = function (?string $heading = null) use ($officialHeaderDataUri, $post, $campaign) {
+    $officialHeader = function (?string $heading = null) use ($logoDataUri, $nationalEmblemDataUri, $post, $campaign) {
         $title = $heading === null ? '' : '<p class="document-title">'.e($heading).'</p><p class="post-title">'.e($post->name).' ('.e($campaign->year).')</p>';
-        return '<div class="official-header" style="background-image: url('.e($officialHeaderDataUri).')"></div>'.$title;
+        return '<table class="official-header" role="presentation"><tr><td class="mark-cell"><img class="ups-mark" src="'.e($logoDataUri).'" alt=""></td><td class="service-name">UGANDA PRISONS SERVICE</td><td class="mark-cell"><img class="national-emblem" src="'.e($nationalEmblemDataUri).'" alt=""></td></tr></table>'.$title;
     };
 @endphp
 
