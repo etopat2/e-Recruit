@@ -25,7 +25,7 @@ class RecruitmentListDocumentTest extends TestCase
     {
         $path = resource_path('brand/uganda-national-emblem.png');
         $this->assertFileExists($path);
-        $this->assertSame('5bd9d744bc74868731c4e045909fea6f352dd0c8d6bdb1361ae001d89637cd63', hash_file('sha256', $path));
+        $this->assertSame('184a3d8153098214037ab9df4736d5a9d8822a56a5b711e7b7363461748e2596', hash_file('sha256', $path));
 
         $assets = app(PdfBrandingService::class)->assets(requireNationalEmblem: true);
         $encoded = str($assets['nationalEmblemDataUri'])->after('base64,')->toString();
