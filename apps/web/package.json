@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build && npm run validate:pwa",
     "typecheck": "vue-tsc -b --pretty false",
     "preview": "vite preview",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "validate:pwa": "node scripts/validate-pwa-assets.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.5",

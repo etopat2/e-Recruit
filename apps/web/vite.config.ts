@@ -7,19 +7,24 @@ export default defineConfig(({ mode }) => ({
     vue(),
     ...(mode === 'test' ? [] : [VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['brand/ups-logo.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'brand/ups-logo.png', 'icons/favicon-16.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png'],
       manifest: {
+        id: '/',
         name: 'Uganda Prisons Service e-Recruit',
         short_name: 'UPS e-Recruit',
         description: 'Secure recruitment applications and field operations for Uganda Prisons Service.',
+        lang: 'en-UG',
         theme_color: '#68162c',
         background_color: '#f5f1e8',
         display: 'standalone',
+        orientation: 'any',
         scope: '/',
         start_url: '/',
         icons: [
-          { src: '/icons/app-icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icons/app-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/maskable-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/maskable-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

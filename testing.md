@@ -359,7 +359,7 @@ npm --prefix apps/web run test:e2e
 npm --prefix apps/web audit --audit-level=high
 ```
 
-The Playwright suite uses mocked synthetic API traffic and exercises both desktop and mobile projects. It does not modify the live development database.
+The production build runs the PWA asset validator after Vite. It verifies that the manifest and service worker exist, declared icons have their exact dimensions, general icons have fully transparent corners, and maskable/Apple icons are full-bleed. The Playwright suite uses mocked synthetic API traffic, exercises the browser installation prompt on desktop and mobile, and does not modify the live development database.
 
 ### Document worker
 

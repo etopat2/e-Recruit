@@ -16,6 +16,27 @@ test('public portal is responsive, branded, and has no serious accessibility vio
   expect(results.violations.filter((violation) => ['critical', 'serious'].includes(violation.impact || ''))).toEqual([])
 })
 
+test('browser install prompt is exposed as an accessible PWA action', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const promptEvent = new Event('beforeinstallprompt', { cancelable: true }) as Event & {
+      prompt: () => Promise<void>
+      userChoice: Promise<{ outcome: 'accepted'; platform: string }>
+    }
+    promptEvent.prompt = async () => { (window as Window & { __pwaPrompted?: boolean }).__pwaPrompted = true }
+    promptEvent.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' })
+    window.dispatchEvent(promptEvent)
+  })
+
+  const menu = page.getByRole('button', { name: 'Menu' })
+  if (await menu.isVisible()) await menu.click()
+  const install = page.getByRole('button', { name: 'Install app' })
+  await expect(install).toBeVisible()
+  await install.click()
+  await expect.poll(() => page.evaluate(() => (window as Window & { __pwaPrompted?: boolean }).__pwaPrompted)).toBe(true)
+  await expect(install).toBeHidden()
+})
+
 test('applicant access form supports keyboard-sized mobile viewport', async ({ page }) => {
   await page.goto('/access')
   await expect(page.getByRole('heading', { name: 'Sign in securely' })).toBeVisible()

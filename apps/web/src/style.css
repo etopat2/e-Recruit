@@ -46,6 +46,7 @@ nav { display: flex; align-items: center; gap: 1.2rem; }
 nav a, .nav-action { font-weight: 600; font-size: .91rem; text-decoration: none; color: var(--ink); background: none; border: 0; cursor: pointer; }
 nav a.router-link-active:not(.brand) { color: var(--burgundy); }
 .nav-action { border: 1px solid var(--burgundy); border-radius: 999px; padding: .58rem 1rem; color: var(--burgundy); }
+.pwa-install-action { white-space: nowrap; }
 .menu-button { display: none; border: 1px solid var(--line); background: var(--paper); border-radius: .5rem; padding: .55rem .8rem; }
 main { min-height: 72vh; }
 .site-footer { display: flex; justify-content: space-between; gap: 2rem; background: var(--burgundy-dark); color: #f9f0dd; padding: 3rem max(5vw, 1.25rem) max(3rem, env(safe-area-inset-bottom)); font-size: .9rem; }

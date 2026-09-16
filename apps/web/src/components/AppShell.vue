@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../stores/session'
 import OfflineBanner from './OfflineBanner.vue'
+import PwaInstallButton from './PwaInstallButton.vue'
 
 const session = useSessionStore()
 const router = useRouter()
@@ -37,6 +38,7 @@ async function signOut() {
     <button class="menu-button" type="button" :aria-expanded="open" aria-controls="primary-navigation" @click="open = !open">Menu</button>
     <nav id="primary-navigation" :class="{ open }" aria-label="Primary navigation" @click="open = false">
       <RouterLink to="/">Opportunities</RouterLink>
+      <PwaInstallButton />
       <template v-if="session.authenticated">
         <RouterLink v-if="!technicalAdmin" to="/dashboard">Dashboard</RouterLink>
         <RouterLink v-if="staffNav" to="/staff/campaigns">Campaigns</RouterLink>

@@ -10,7 +10,7 @@ UPS e-Recruit is a secure, campaign-configurable recruitment platform.
 - `infra`: Nginx and operational scripts.
 - `docs`: architecture, security, operations, acceptance and go-live evidence.
 
-The supplied `Resources/logo.png` is the official in-app logo. Square favicon/PWA assets are derived from it under `apps/web/public/icons`.
+The supplied `Resources/logo.png` is the official in-app logo. Favicon and general PWA icons derived from it use true transparent corner pixels; separate full-bleed maskable and Apple icons let each operating system apply its own shape without showing white corners. Regenerate them with `services/document-worker/.venv/Scripts/python.exe apps/web/scripts/generate_pwa_icons.py` on Windows (or any Python 3 environment with Pillow).
 
 ## Development quick start
 
@@ -33,6 +33,8 @@ docker compose exec api php artisan erecruit:sync-education-institutions
 ```
 
 Open `http://localhost:8080`. Mailpit is at `http://localhost:8026` and MinIO development console at `http://localhost:9011`.
+
+On Chromium-based browsers, use the **Install app** action when it appears in the primary navigation. Production installation requires HTTPS; `localhost` is accepted for development. On iOS/iPadOS, install from Safari using **Share → Add to Home Screen**.
 
 The Uganda administrative import loads the canonical region-to-village hierarchy and explicitly excludes electoral constituencies. The second idempotent import loads the versioned UPS prison regions, district/city jurisdictions, recruitment centres, district routing and medical facilities derived from the supplied planning workbook, while retaining source hashes and ambiguity notes. Applicants can search for a village to populate its full administrative path or use cascading district-down selectors. Administrators maintain this reference data at `/staff/geography`. The institution synchronization imports the official NCHE, MoES TVET and MoES EMIS directories into indexed local tables so qualification-form searches do not wait on external services; the scheduler refreshes them weekly.
 

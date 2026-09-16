@@ -57,4 +57,4 @@ Use expand/migrate/contract for destructive or incompatible schema evolution: re
 
 ## Configuration ownership
 
-The secret store supplies APP key, DB/Redis/object credentials, worker token and SMTP credentials. Operations owns URLs, trusted proxies, log sink, backup target and release tag. Recruitment owns campaign/reference/geography/centre/policy data. Security owns TLS, secret rotation, managed devices, malware scanner and audit-log retention. `Resources/logo.png` is copied into the immutable build; favicon/PWA derivatives live under `apps/web/public/icons`.
+The secret store supplies APP key, DB/Redis/object credentials, worker token and SMTP credentials. Operations owns URLs, trusted proxies, log sink, backup target and release tag. Recruitment owns campaign/reference/geography/centre/policy data. Security owns TLS, secret rotation, managed devices, malware scanner and audit-log retention. `Resources/logo.png` is copied into the immutable build; transparent general-purpose and full-bleed maskable favicon/PWA derivatives live under `apps/web/public/icons`. HTTPS is required for production service-worker registration and installation.
