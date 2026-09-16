@@ -29,7 +29,7 @@ beforeEach(() => {
         },
         documents: [{ id: documentKey, type: 'national_id', label: 'National ID', filename: 'amina-national-id.pdf', mime_type: 'application/pdf', version: 1, preview_url: `/api/v1/documents/${documentKey}/preview`, quality: { status: 'clear' }, fields: [] }],
         comparisons: [], verified_values: [],
-        evidence_matrix: { name: [{ document_id: documentKey, source_label: 'National ID - version 1', source_filename: 'amina-national-id.pdf', value: 'Amina Nabirye', confidence: 0.98, page: 1 }] },
+        evidence_matrix: { dob: [{ document_id: documentKey, source_label: 'National ID - version 1', source_filename: 'amina-national-id.pdf', value: '08.02.1992', confidence: 0.98, page: 1 }] },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     return new Response(new Blob(['preview']), { status: 200, headers: { 'Content-Type': 'application/pdf' } })
@@ -53,7 +53,9 @@ describe('VerificationWorkbenchView', () => {
 
     expect(await screen.findByRole('heading', { name: 'Structured declared information' })).toBeInTheDocument()
     expect(screen.getAllByText('Amina Nabirye').length).toBeGreaterThan(0)
-    expect(screen.getByText('12 May 2001')).toBeInTheDocument()
+    expect(screen.getAllByText('12 May 2001')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: /8 Feb 1992.*Focus original source/i })).toBeInTheDocument()
+    expect(screen.queryByText('2 Aug 1992')).not.toBeInTheDocument()
     expect(screen.getByText('Mukono, Namanve, Kiwanga')).toBeInTheDocument()
     expect(screen.getByText('Namilyango College')).toBeInTheDocument()
     expect(screen.getAllByText('amina-national-id.pdf')).toHaveLength(2)

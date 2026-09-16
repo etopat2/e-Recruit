@@ -105,14 +105,37 @@ function visibleEntries(value: Record<string, unknown>): Array<[string, unknown]
   })
 }
 
+function calendarDate(year: number, month: number, day: number): Date | null {
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day
+    ? parsed
+    : null
+}
+
+function displayDate(text: string): string | null {
+  const dayFirst = text.match(/^(\d{1,2})([./-])(\d{1,2})\2(\d{4})$/)
+  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const parsed = dayFirst
+    ? calendarDate(Number(dayFirst[4]), Number(dayFirst[3]), Number(dayFirst[1]))
+    : isoDate
+      ? calendarDate(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]))
+      : null
+  if (!parsed) return null
+  return new Intl.DateTimeFormat('en-UG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parsed)
+}
+
 function formatValue(value: unknown, key = ''): string {
   if (value === true) return 'Yes'
   if (value === false) return 'No'
   if (value === null || value === undefined || value === '') return 'Not provided'
   const text = String(value)
   if (/date|dob|_at$|year/i.test(key)) {
-    const parsed = new Date(/^\d{4}$/.test(text) ? `${text}-01-01` : text)
-    if (!Number.isNaN(parsed.valueOf())) return /^\d{4}$/.test(text) ? text : new Intl.DateTimeFormat('en-UG', { day: 'numeric', month: 'short', year: 'numeric' }).format(parsed)
+    if (/^\d{4}$/.test(text)) return text
+    const calendarValue = displayDate(text)
+    if (calendarValue) return calendarValue
+    if (/^\d{1,4}([./-])\d{1,2}\1\d{1,4}$/.test(text)) return text
+    const parsed = new Date(text)
+    if (!Number.isNaN(parsed.valueOf())) return new Intl.DateTimeFormat('en-UG', { day: 'numeric', month: 'short', year: 'numeric' }).format(parsed)
   }
   return text.replaceAll('_', ' ')
 }
