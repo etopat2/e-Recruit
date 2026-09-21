@@ -238,7 +238,7 @@ These are the e-Recruit-specific API settings. Standard Laravel driver alternati
 |---|---|---|
 | `APP_NAME` | `UPS e-Recruit` | Application and notification name |
 | `APP_ENV` | `local` | Enables local behavior |
-| `APP_KEY` | Generated, never committed | Encrypts NINs, MFA secrets, recovery-code data, queued email-code payloads, and application values |
+| `APP_KEY` | Generated, never committed | Encrypts NINs, MFA secrets, staged/queued recovery-code data, and application values |
 | `APP_DEBUG` | `true` locally only | Detailed local errors; must be false in production |
 | `APP_URL` | Same-origin application URL | Absolute link and artifact URL generation |
 | `APP_TIMEZONE` | `Africa/Kampala` | Application date/time interpretation |
@@ -260,6 +260,7 @@ These are the e-Recruit-specific API settings. Standard Laravel driver alternati
 | `AWS_ENDPOINT` | `http://minio:9000` | Internal MinIO endpoint |
 | `AWS_USE_PATH_STYLE_ENDPOINT` | `true` | Required by the supported MinIO layout |
 | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT` | `smtp`, `mailpit`, `1025` | Local captured email |
+| `MAIL_DELIVERY_MODE`, `MAIL_TIMEOUT_SECONDS` | `capture`, `15` | Explicit local capture (no internet delivery), bounded SMTP submission timeout |
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | Synthetic sender | Notification sender identity |
 | `APPLICATION_REFERENCE_PATTERN` | `UPS/{year}/{post}/{sequence}` | Final reference format |
 | `APPLICATION_REFERENCE_DIGITS` | `6` | Reference sequence padding |
@@ -313,6 +314,8 @@ For each privileged development account:
 4. For an authenticator, scan the QR code or use the displayed `otpauth://` provisioning URI. For email MFA, retrieve the six-digit message from Mailpit at `http://localhost:8026` (or the configured `MAILPIT_UI_PORT`).
 5. Save the one-time recovery codes outside the browser. They are generated for either method, shown only during enrolment, and remain the account-recovery mechanism.
 6. Enter the current six-digit authenticator or email code and activate MFA. Email codes expire after five minutes, work once, allow five attempts, and have a 60-second resend cooldown.
+
+After activation, the app keeps the recovery codes visible until you select **Continue** and queues a **separate** recovery-code email to the account email. That email is not a login OTP. In local capture mode, both messages appear only in Mailpit. Codes are not emailed before successful confirmation; restarting enrollment replaces the staged codes. Existing MFA users' original codes cannot be recovered from their stored hashes and are not retrospectively emailed. Use the existing authorised reset/re-enrollment workflow if new codes are required.
 7. When prompted, replace the development-only temporary password before entering the application.
 8. On later logins, authenticator-enrolled users enter their current authenticator code with the password. Email-enrolled users submit the password first and then enter the purpose-bound code delivered to the registered email.
 
@@ -448,9 +451,12 @@ Start from `.env.production.example`; store the real file outside Git with mode 
 
 | Setting | Requirement |
 |---|---|
-| `MAIL_HOST`, `MAIL_PORT` | Approved SMTP endpoint, normally port `587` |
-| `MAIL_USERNAME`, `MAIL_PASSWORD` | Injected SMTP credentials |
-| `MAIL_SCHEME` | `smtp` for normal SMTP/STARTTLS negotiation; validate TLS with the provider |
+| `MAIL_DELIVERY_MODE` | `self_hosted` with the mail overlay; `capture` is forbidden in production |
+| `MAIL_DOMAIN`, `MAIL_HOSTNAME`, `MAIL_DKIM_SELECTOR` | Owned sending domain, public mail hostname, and DKIM selector (`erecruit`) |
+| `MAIL_HOST`, `MAIL_PORT` | `mail`, `25` for the private bundled SMTP server |
+| `MAIL_USERNAME`, `MAIL_PASSWORD` | Empty only for the isolated bundled relay; otherwise configured SMTP credentials |
+| `MAIL_SCHEME`, `MAIL_TIMEOUT_SECONDS` | `smtp`, `15`; bundled outbound SMTP requires TLS 1.2 or later |
+| `MAIL_TRUSTED_SUBNET` | Dedicated private Docker subnet, default `172.31.250.0/28`; must not overlap other networks |
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | Approved UPS sender identity |
 | `SMS_DRIVER`, `SMS_BASE_URL`, `SMS_TOKEN`, `SMS_TIMEOUT_SECONDS` | Keep driver `null` until an approved provider is configured |
 | `PUSH_DRIVER`, `PUSH_BASE_URL`, `PUSH_TOKEN`, `PUSH_VAPID_PUBLIC_KEY`, `PUSH_TIMEOUT_SECONDS` | Keep driver `null` until an approved provider is configured |
@@ -470,6 +476,101 @@ Then follow `FINAL_IMPLEMENTATION_REPORT.md` and `docs/deployment/GO_LIVE_CHECKL
 - **`APP_KEY` error:** if `APP_KEY` is already populated in `apps/api/.env`, do not replace it; run `docker compose up -d --force-recreate api queue scheduler`. If it is empty on a new installation, run `docker compose exec -T api php artisan key:generate --force` once and then recreate those services. Confirm `/api/v1/health/ready` reports `checks.encryption.ok: true`.
 - **Worker returns 401/403:** `DOCUMENT_WORKER_TOKEN` differs between the API and worker.
 - **Uploads fail storage readiness:** confirm MinIO is healthy, `minio-init` succeeded, the bucket names match, and anonymous access is disabled.
-- **Privileged user receives an MFA error:** complete first-login enrolment using the selected authenticator or email method. For email MFA, verify the queue worker and SMTP/Mailpit connection, use the newest code within five minutes, and respect the 60-second resend cooldown. An unused recovery code remains valid for account recovery.
+- **Privileged user receives an MFA error:** complete first-login enrolment using the selected authenticator or email method. Login OTPs submit directly to SMTP (no queue-worker dependency). Check SMTP/Mailpit connectivity, use the newest code within five minutes, and respect the 60-second resend cooldown. An unused recovery code remains valid for account recovery. Separate recovery emails require a running queue worker.
 - **Configuration change appears ignored:** run `docker compose exec -T api php artisan optimize:clear`; recreate containers when changing Compose-provided environment values.
 - **Queue-backed action remains pending:** inspect `docker compose logs queue` and verify database/Redis/provider connectivity.
+
+## Self-hosted email (no third-party provider)
+
+The optional mail service runs Postfix and OpenDKIM alongside the app and delivers directly to recipients' mail servers through DNS MX lookup. It does not use a third-party email delivery API or relay. The default development stack still uses Mailpit: changing the message text alone cannot turn a local test inbox into an internet mail server.
+
+Implementation verification: the real Laravel-to-Mailpit OTP/confirmation/recovery round trip passed, as did the isolated Postfix tests for relay denial, approved sender enforcement, DKIM-signed TLS delivery, persistent keys/queue, retry after destination recovery, and placeholder rejection. These checks did not send to public inboxes. External delivery activation and acceptance remain pending the owner's domain, sender, DNS/PTR and network configuration below.
+
+### 1. Prepare a deliverable sender
+
+Use a domain you own and an authorised sender mailbox on it. Seeded `@example.test` accounts are synthetic and cannot receive internet mail; update the intended user's email through technical account management before testing real delivery. The outbound-only container is not a mailbox server: maintain a working sender/return-path mailbox to receive delivery failures.
+
+Deploy on a server with a stable public IPv4 address, outbound TCP 25 permitted by the hosting/network operator, and permission to set reverse DNS (PTR). A Windows development PC behind residential NAT or an ISP blocking port 25 is not sufficient just because Docker is installed. Do not expose the private SMTP listener or Mailpit to the public internet.
+
+### 2. Configure the environment
+
+In the **root** deployment environment file, set the following to real owned values (do not copy placeholder values into production):
+
+```dotenv
+MAIL_DELIVERY_MODE=self_hosted
+MAIL_DOMAIN=YOUR_OWNED_DOMAIN
+MAIL_HOSTNAME=YOUR_MAIL_HOSTNAME_BELOW_THAT_DOMAIN
+MAIL_FROM_ADDRESS=YOUR_AUTHORISED_SENDER_MAILBOX
+MAIL_FROM_NAME="UPS e-Recruit"
+MAIL_DKIM_SELECTOR=erecruit
+MAIL_TRUSTED_SUBNET=172.31.250.0/28
+MAIL_HOST=mail
+MAIL_PORT=25
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_SCHEME=smtp
+MAIL_TIMEOUT_SECONDS=15
+```
+
+Keep all other production secrets and required settings from `.env.production.example`. The mail service rejects reserved/example domains and malformed settings. Its SMTP port is reachable only on its dedicated Docker network; it accepts only the configured envelope sender from trusted application containers. Only the API, queue, scheduler, and mail service should join this network.
+
+### 3. Build the server and export the public DKIM record
+
+From the repository root, for production:
+
+```powershell
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml config --quiet
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml build mail
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml run --rm --no-deps mail dkim-dns
+```
+
+The last command creates/preserves a 2048-bit key in the `mail-dkim` volume and prints **only the public DNS TXT record**. Never publish the `.private` file. For an appropriately networked development host, use `docker compose -f docker-compose.yml -f docker-compose.mail.yml` instead; the root `.env` then supplies the values. Always use the same Compose project and environment for export and deployment so the DKIM volume stays the same.
+
+### 4. Publish and verify DNS
+
+- Mail-host **A** record → the server's public IPv4 address.
+- Public IP **PTR** record → that exact mail hostname; its A record must resolve back to the same IP. PTR is configured by the IP/hosting owner, not usually by the domain DNS dashboard.
+- Domain **SPF TXT** record → authorise this sending IP (for a domain using only this server, `v=spf1 ip4:YOUR_PUBLIC_IPV4 -all`). Merge with an existing SPF record instead of publishing a second one.
+- **DKIM TXT** → the public record from step 3 at `erecruit._domainkey` (or your configured selector).
+- **DMARC TXT** at `_dmarc` → start with `v=DMARC1; p=none`, verify alignment, then apply your organisation's approved enforcement policy.
+
+This sender does not need to replace your domain's existing inbound MX records. Preserve working inbound mail and bounce reception. Do not add a public AAAA record until IPv6 sending/reverse DNS is deliberately supported (this service sends over IPv4).
+
+### 5. Activate and verify the running app
+
+```powershell
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml up -d --build mail api queue scheduler
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml exec -T api php artisan config:cache
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml restart queue scheduler
+```
+
+Enroll a designated test account with a real mailbox using **Email code**. Check that the OTP reaches the mailbox and the app says **accepted for delivery**, then confirm MFA. Verify a second email titled **Your UPS e-Recruit MFA recovery codes** arrives and matches the displayed recovery codes. Check the received headers for SPF/DKIM/DMARC pass. Test a subsequent login, newest-code resend, and a single-use recovery login. Keep test messages and codes private.
+
+SMTP submission is not proof of inbox delivery: `submitted` means accepted by the SMTP server, `captured` means local test inbox, `failed` means submission failed, and a recovery email may initially be `pending`/`retrying`. No SMTP-only response can promise placement in an external recipient's inbox. Remote rejection, spam filtering, DNS problems, or blocked port 25 must be investigated before production acceptance.
+
+### 6. Diagnose delays without exposing codes
+
+```powershell
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml logs --tail 100 mail
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml exec -T mail postqueue -p
+docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.mail.yml logs --tail 100 queue
+```
+
+Postfix `status=sent` means the remote server accepted the message, not necessarily inbox placement; `deferred` or `bounced` includes the reason. Logs/queue listings contain addresses and must be treated as private. Do not use message-body inspection commands in shared logs. The server retries deferred messages for up to one hour; OTPs still expire after five minutes, so use the newest code or request a new one after fixing the delivery problem. Persistent mail/DKIM volumes must not be deleted during upgrades.
+
+Automated isolated server verification (synthetic recipients only; no internet egress):
+
+```powershell
+docker build -t ups-erecruit-mail:verification infra/mail
+python infra/mail/tests/smoke.py
+```
+
+For the real Laravel-to-Mailpit round trip on the development Docker stack (isolated SQLite test database, synthetic recipient, both OTP and recovery email content verified):
+
+```powershell
+docker compose exec -T -e RUN_MAIL_TRANSPORT_TEST=1 api php artisan test --compact --filter=MfaMailTransportTest
+```
+
+The test removes only its own captured messages. It is opt-in and skipped by the normal unit suite when no Mailpit service is present.
+
+References: [Postfix configuration](https://www.postfix.org/BASIC_CONFIGURATION_README.html), [Postfix TLS](https://www.postfix.org/TLS_README.html), [OpenDKIM configuration](https://www.opendkim.org/opendkim.conf.5.html).

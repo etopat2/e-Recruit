@@ -1,0 +1,2 @@
+# Postfix set-permissions checks its installed manpages even in slim images.
+path-include /usr/share/man/*

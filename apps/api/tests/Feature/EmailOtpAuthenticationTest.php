@@ -2,13 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\DeliverNotificationJob;
+use App\Mail\MfaEmailCodeMail;
 use App\Models\EmailOtpChallenge;
 use App\Models\User;
-use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class EmailOtpAuthenticationTest extends TestCase
@@ -17,9 +18,16 @@ class EmailOtpAuthenticationTest extends TestCase
 
     private const Password = 'PermanentSecurePass2026'; // gitleaks:allow -- synthetic test credential
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config()->set(['mail.default' => 'smtp', 'mail.delivery_mode' => 'capture']);
+    }
+
     public function test_privileged_user_can_enrol_email_mfa_and_challenge_is_purpose_bound(): void
     {
         Queue::fake();
+        Mail::fake();
         $user = $this->privilegedUser(['mfa_method' => null, 'mfa_confirmed_at' => null]);
         $login = $this->login($user)->assertJsonPath('requires_mfa_enrolment', true);
 
@@ -28,9 +36,10 @@ class EmailOtpAuthenticationTest extends TestCase
             'method' => 'email',
         ])->assertOk()
             ->assertJsonPath('method', 'email')
+            ->assertJsonPath('delivery_status', 'captured')
             ->assertJsonStructure(['challenge_id', 'challenge_token', 'masked_email', 'expires_in', 'resend_available_in', 'recovery_codes']);
 
-        $code = $this->queuedCode();
+        $code = $this->sentCode();
         $challenge = EmailOtpChallenge::query()->findOrFail($enrolment->json('challenge_id'));
         $this->assertSame('enrolment', $challenge->purpose);
         $this->assertNotSame($code, $challenge->code_hash);
@@ -60,6 +69,7 @@ class EmailOtpAuthenticationTest extends TestCase
     public function test_enrolled_email_code_is_single_use_and_completes_login(): void
     {
         Queue::fake();
+        Mail::fake();
         $user = $this->privilegedUser([
             'mfa_method' => 'email',
             'mfa_confirmed_at' => now(),
@@ -71,7 +81,7 @@ class EmailOtpAuthenticationTest extends TestCase
             ->assertJsonPath('requires_email_otp', true)
             ->assertJsonMissingPath('token')
             ->assertJsonMissingPath('user');
-        $code = $this->queuedCode();
+        $code = $this->sentCode();
         $payload = [
             'challenge_id' => $challengeResponse->json('challenge_id'),
             'challenge_token' => $challengeResponse->json('challenge_token'),
@@ -91,6 +101,7 @@ class EmailOtpAuthenticationTest extends TestCase
     public function test_email_code_resend_cooldown_and_five_attempt_lockout_are_enforced(): void
     {
         Queue::fake();
+        Mail::fake();
         $user = $this->privilegedUser(['mfa_method' => 'email', 'mfa_confirmed_at' => now()]);
         $challengeResponse = $this->login($user)->assertJsonPath('requires_email_otp', true);
         $binding = [
@@ -121,6 +132,69 @@ class EmailOtpAuthenticationTest extends TestCase
         }
 
         $this->assertSame(5, EmailOtpChallenge::query()->findOrFail($binding['challenge_id'])->attempt_count);
+        Mail::assertSent(MfaEmailCodeMail::class, 2);
+    }
+
+    public function test_login_returns_503_and_invalidates_challenge_when_smtp_rejects_submission(): void
+    {
+        $user = $this->privilegedUser(['mfa_method' => 'email', 'mfa_confirmed_at' => now()]);
+        Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('SMTP secret must not leak'));
+
+        $response = $this->login($user)->assertServiceUnavailable()->assertJsonMissingPath('token');
+
+        $this->assertStringNotContainsString('SMTP secret', $response->getContent());
+        $this->assertNotNull(EmailOtpChallenge::query()->sole()->consumed_at);
+        $this->assertDatabaseHas('notifications', ['event_code' => 'auth.mfa.email_code', 'status' => 'failed']);
+        $this->assertDatabaseHas('notification_attempts', ['status' => 'failed', 'error_code' => 'MailSubmissionFailed']);
+    }
+
+    public function test_self_hosted_smtp_acceptance_is_not_reported_as_inbox_delivery(): void
+    {
+        Mail::fake();
+        Queue::fake();
+        config()->set(['mail.delivery_mode' => 'self_hosted', 'mail.mailers.smtp.host' => 'mail']);
+        $user = $this->privilegedUser(['mfa_method' => 'email', 'mfa_confirmed_at' => now()]);
+
+        $this->login($user)->assertOk()->assertJsonPath('delivery_status', 'submitted');
+
+        Mail::assertSent(MfaEmailCodeMail::class, 1);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('notifications', ['event_code' => 'auth.mfa.email_code', 'status' => 'submitted', 'delivered_at' => null]);
+    }
+
+    public function test_log_transport_returns_503_instead_of_logging_a_security_code(): void
+    {
+        Mail::fake();
+        config()->set('mail.default', 'log');
+        $user = $this->privilegedUser(['mfa_method' => 'email', 'mfa_confirmed_at' => now()]);
+
+        $this->login($user)->assertServiceUnavailable();
+
+        Mail::assertNothingSent();
+    }
+
+    #[DataProvider('unsafeMailConfigurations')]
+    public function test_unsafe_mail_configuration_returns_503_without_claiming_delivery(array $configuration, string $environment): void
+    {
+        Mail::fake();
+        config()->set($configuration);
+        app()->instance('env', $environment);
+        $user = $this->privilegedUser(['mfa_method' => 'email', 'mfa_confirmed_at' => now()]);
+
+        $this->login($user)->assertServiceUnavailable()->assertJsonMissingPath('delivery_status');
+
+        Mail::assertNothingSent();
+        $this->assertDatabaseHas('notifications', ['recipient' => $user->email, 'status' => 'failed']);
+    }
+
+    public static function unsafeMailConfigurations(): array
+    {
+        return [
+            'production-capture' => [[], 'production'],
+            'mailpit-marked-as-live' => [['mail.delivery_mode' => 'self_hosted', 'mail.mailers.smtp.host' => 'mailpit'], 'testing'],
+            'silent-log-fallback' => [['mail.default' => 'failover'], 'testing'],
+            'unknown-mode' => [['mail.delivery_mode' => 'unknown'], 'testing'],
+        ];
     }
 
     private function privilegedUser(array $attributes): User
@@ -144,13 +218,13 @@ class EmailOtpAuthenticationTest extends TestCase
         ]);
     }
 
-    private function queuedCode(): string
+    private function sentCode(): string
     {
         $code = null;
-        Queue::assertPushed(DeliverNotificationJob::class, function (DeliverNotificationJob $job) use (&$code): bool {
-            $code = $job->oneTimeCode;
+        Mail::assertSent(MfaEmailCodeMail::class, function (MfaEmailCodeMail $mail) use (&$code): bool {
+            $code = $mail->code;
 
-            return $job instanceof ShouldBeEncrypted && $code !== null;
+            return $mail->hasTo('email-mfa@example.test');
         });
         $this->assertMatchesRegularExpression('/^\d{6}$/', (string) $code);
 

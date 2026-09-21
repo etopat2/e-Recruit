@@ -10,12 +10,20 @@ import { useSessionStore, type EmailOtpChallengePayload } from '../stores/sessio
 import type { User } from '../types'
 
 type MfaMethod = 'authenticator' | 'email'
-type AccessPhase = 'access' | 'enrol' | 'confirm' | 'email-login' | 'password'
+type AccessPhase = 'access' | 'enrol' | 'confirm' | 'email-login' | 'recovery' | 'password'
 
 interface MfaEnrollmentResponse extends Partial<EmailOtpChallengePayload> {
   method: MfaMethod
   provisioning_uri?: string
   recovery_codes: string[]
+}
+
+interface MfaConfirmationResponse {
+  token: string
+  user: User
+  requires_password_change?: boolean
+  recovery_email_status?: 'queued' | 'unavailable' | 'not_available'
+  recovery_email_message?: string
 }
 
 const tab = ref<'login' | 'register'>('login')
@@ -26,6 +34,10 @@ const fieldErrors = ref<Record<string, string[]>>({})
 const provisioningUri = ref('')
 const qrDataUrl = ref('')
 const recoveryCodes = ref<string[]>([])
+const deliveryMessage = ref('')
+const recoveryEmailMessage = ref('')
+const recoveryEmailStatus = ref<MfaConfirmationResponse['recovery_email_status']>()
+const requiresPasswordChange = ref(false)
 const login = reactive({ identity: '', password: '', totp: '', recoveryCode: '' })
 const useRecoveryCode = ref(false)
 const registration = reactive({ first_name: '', middle_names: '', last_name: '', nin: '', phone: '', email: '', date_of_birth: '', sex: '', nationality: 'Ugandan', password: '', password_confirmation: '' })
@@ -93,6 +105,7 @@ function applyEmailChallenge(response: EmailOtpChallengePayload): void {
   emailChallengeId.value = response.challenge_id
   emailChallengeToken.value = response.challenge_token
   maskedEmail.value = response.masked_email
+  deliveryMessage.value = response.delivery_message || ''
   resendAvailableAt = Date.now() + (response.resend_available_in * 1000)
   updateCountdowns()
 }
@@ -100,6 +113,7 @@ function applyEmailChallenge(response: EmailOtpChallengePayload): void {
 async function submitLogin(): Promise<void> {
   busy.value = true
   message.value = ''
+  deliveryMessage.value = ''
   fieldErrors.value = {}
   try {
     const response = await session.login(login.identity, login.password, useRecoveryCode.value ? '' : login.totp, useRecoveryCode.value ? login.recoveryCode : '')
@@ -149,6 +163,7 @@ function applyMfaEnrollment(response: MfaEnrollmentResponse): void {
   provisioningUri.value = response.provisioning_uri || ''
   recoveryCodes.value = response.recovery_codes
   confirmCode.value = ''
+  deliveryMessage.value = ''
   if (response.method === 'email') applyEmailChallenge(response as EmailOtpChallengePayload)
   phase.value = 'confirm'
 }
@@ -173,6 +188,7 @@ async function restartMfaEnrollment(): Promise<void> {
 function chooseAnotherMethod(): void {
   confirmCode.value = ''
   message.value = ''
+  deliveryMessage.value = ''
   fieldErrors.value = {}
   phase.value = 'enrol'
 }
@@ -180,6 +196,7 @@ function chooseAnotherMethod(): void {
 async function resendEmailCode(): Promise<void> {
   busy.value = true
   message.value = ''
+  deliveryMessage.value = ''
   fieldErrors.value = {}
   try {
     const response = await api<Omit<EmailOtpChallengePayload, 'challenge_token'> & { message: string }>('/auth/mfa/email/resend', {
@@ -188,6 +205,7 @@ async function resendEmailCode(): Promise<void> {
     })
     emailChallengeId.value = response.challenge_id
     maskedEmail.value = response.masked_email
+    deliveryMessage.value = response.delivery_message || ''
     resendAvailableAt = Date.now() + (response.resend_available_in * 1000)
     updateCountdowns()
     message.value = ''
@@ -235,13 +253,32 @@ async function confirmMfa(): Promise<void> {
     const payload = mfaMethod.value === 'email'
       ? { code: confirmCode.value, challenge_id: emailChallengeId.value, challenge_token: emailChallengeToken.value }
       : { code: confirmCode.value }
-    const response = await api<{ token: string; user: User; requires_password_change?: boolean }>('/auth/mfa/confirm', {
+    const response = await api<MfaConfirmationResponse>('/auth/mfa/confirm', {
       method: 'POST',
       ...jsonBody(payload),
     })
     setAuthToken(response.token)
     session.user = response.user
-    if (response.requires_password_change) {
+    requiresPasswordChange.value = Boolean(response.requires_password_change)
+    if (response.recovery_email_message) {
+      recoveryEmailMessage.value = response.recovery_email_message
+      recoveryEmailStatus.value = response.recovery_email_status
+      phase.value = 'recovery'
+      return
+    }
+    await continueAfterMfa()
+  } catch (problem) {
+    fail(problem)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function continueAfterMfa(): Promise<void> {
+  busy.value = true
+  message.value = ''
+  try {
+    if (requiresPasswordChange.value) {
       passwordChange.current_password = login.password
       phase.value = 'password'
       return
@@ -337,7 +374,8 @@ async function submitRegistration(): Promise<void> {
       <form v-else-if="phase === 'email-login'" class="mfa-step" @submit.prevent="verifyEmailLogin">
         <p class="eyebrow">Email verification</p>
         <h2>Enter your security code</h2>
-        <p>A six-digit, single-use code was sent to <strong>{{ maskedEmail }}</strong>. It expires in five minutes.</p>
+        <FormAlert v-if="deliveryMessage" :message="deliveryMessage" />
+        <p>Enter the six-digit, single-use code for <strong>{{ maskedEmail }}</strong>. It expires in five minutes.</p>
         <label>Email security code<input v-model="confirmCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required /><FieldError :error="fieldErrors.code" /></label>
         <div class="button-row">
           <button class="button primary" :disabled="busy || confirmCode.length !== 6"><LoadingIndicator v-if="busy" small label="Verifying…" /><span v-else>Verify and sign in</span></button>
@@ -354,8 +392,11 @@ async function submitRegistration(): Promise<void> {
             <div><details><summary>Cannot scan the QR code?</summary><p>Open this provisioning address in your authenticator or copy its setup details:</p><code class="break-all">{{ provisioningUri }}</code></details><p class="totp-countdown" aria-live="off">Authenticator codes refresh in <strong>{{ totpSecondsRemaining }} seconds</strong>.</p></div>
           </div>
         </template>
-        <p v-else>A six-digit, single-use code was sent to <strong>{{ maskedEmail }}</strong>. It expires in five minutes.</p>
-        <div class="recovery-box"><strong>Save these single-use recovery codes now</strong><span>Store them offline. Each code works once and they will not be shown again.</span><code v-for="code in recoveryCodes" :key="code">{{ code }}</code></div>
+        <template v-else>
+          <FormAlert v-if="deliveryMessage" :message="deliveryMessage" />
+          <p>Enter the six-digit, single-use code for <strong>{{ maskedEmail }}</strong>. It expires in five minutes.</p>
+        </template>
+        <div class="recovery-box"><strong>Save these single-use recovery codes now</strong><span>Store them offline. Each code works once.</span><code v-for="code in recoveryCodes" :key="code">{{ code }}</code></div>
         <label>{{ mfaMethod === 'email' ? 'Email security code' : 'Authenticator code' }}<input v-model="confirmCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required /><FieldError :error="fieldErrors.code" /></label>
         <div class="button-row">
           <button class="button primary" :disabled="busy || confirmCode.length !== 6"><LoadingIndicator v-if="busy" small label="Activating MFA…" /><span v-else>Activate MFA</span></button>
@@ -364,6 +405,13 @@ async function submitRegistration(): Promise<void> {
           <button type="button" class="text-button" :disabled="busy" @click="restartMfaEnrollment">Restart this method</button>
         </div>
       </form>
+
+      <section v-else-if="phase === 'recovery'" class="mfa-step">
+        <h2>MFA is active</h2>
+        <FormAlert :kind="recoveryEmailStatus === 'unavailable' ? 'error' : 'info'" :message="recoveryEmailMessage" />
+        <div v-if="recoveryCodes.length" class="recovery-box"><strong>Save your recovery codes before continuing</strong><span>Store them offline. Each code works once. These codes will not remain on screen after you leave this step.</span><code v-for="code in recoveryCodes" :key="code">{{ code }}</code></div>
+        <button type="button" class="button primary" :disabled="busy" @click="continueAfterMfa"><LoadingIndicator v-if="busy" small label="Continuing…" /><span v-else>{{ requiresPasswordChange ? 'Continue to change password' : 'Continue to your account' }}</span></button>
+      </section>
 
       <form v-else class="mfa-step" @submit.prevent="changePassword">
         <p class="eyebrow">Required security step</p><h2>Replace the temporary password</h2><p>Choose a unique password with at least 12 characters, upper- and lower-case letters, and a number. Other application features remain locked until this is complete.</p><label>Current temporary password<input v-model="passwordChange.current_password" type="password" autocomplete="current-password" required /><FieldError :error="fieldErrors.current_password" /></label><label>New password<input v-model="passwordChange.password" type="password" autocomplete="new-password" minlength="12" required /><FieldError :error="fieldErrors.password" /></label><label>Confirm new password<input v-model="passwordChange.password_confirmation" type="password" autocomplete="new-password" minlength="12" required /></label><button class="button primary full" :disabled="busy"><LoadingIndicator v-if="busy" small label="Changing…" /><span v-else>Change password and continue</span></button>

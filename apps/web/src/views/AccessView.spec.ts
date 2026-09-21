@@ -35,6 +35,12 @@ async function renderAccess() {
   return router
 }
 
+async function signIn(): Promise<void> {
+  await fireEvent.update(screen.getByLabelText('Email address or phone'), 'admin@example.test')
+  await fireEvent.update(screen.getByLabelText('Password'), 'SyntheticPassword2026')
+  await fireEvent.click(screen.getAllByRole('button', { name: 'Sign in' }).at(-1)!)
+}
+
 describe('AccessView MFA', () => {
   it('submits a recovery code instead of a TOTP code when requested', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ token: 'token', user: { ...staffUser(), mfa_confirmed: true, must_change_password: false } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
@@ -125,5 +131,85 @@ describe('AccessView MFA', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Verify and sign in' }))
     await waitFor(() => expect(localStorage.getItem('ups_auth_token')).toBe('verified-token'))
     expect(fetchMock.mock.calls[1]?.[0]).toContain('/auth/mfa/email/verify')
+  })
+
+  it.each([
+    ['captured', 'The code was captured by the development mailbox; it was not delivered to an external inbox.'],
+    ['submitted', 'The mail server accepted the security code. Inbox delivery is not confirmed.'],
+  ])('shows the API delivery message for %s login mail without claiming delivery', async (delivery_status, delivery_message) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      requires_email_otp: true, challenge_id: 'login-mail', challenge_token: 'b'.repeat(64),
+      masked_email: 'ad***@example.test', expires_in: 300, resend_available_in: 60,
+      delivery_status, delivery_message,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    await renderAccess()
+    await signIn()
+
+    expect(await screen.findByText(delivery_message)).toHaveAttribute('role', 'status')
+    expect(screen.queryByText(/code was sent to/i)).not.toBeInTheDocument()
+    expect(localStorage.getItem('ups_auth_token')).toBeNull()
+  })
+
+  it('updates delivery reporting on resend and shows SMTP failures without stale success text', async () => {
+    const challenge = { challenge_id: 'resend-mail', challenge_token: 'b'.repeat(64), masked_email: 'ad***@example.test', expires_in: 300, resend_available_in: 0 }
+    const responses = [
+      { status: 200, body: { ...challenge, requires_email_otp: true, delivery_status: 'captured', delivery_message: 'Code captured in the local development mailbox.' } },
+      { status: 200, body: { ...challenge, delivery_status: 'submitted', delivery_message: 'The mail server accepted the replacement code; delivery is not confirmed.' } },
+      { status: 503, body: { message: 'The security email could not be submitted. Please try again.' } },
+    ]
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => {
+      const response = responses.shift()!
+      return Promise.resolve(new Response(JSON.stringify(response.body), { status: response.status, headers: { 'Content-Type': 'application/json' } }))
+    }))
+    await renderAccess()
+    await signIn()
+
+    expect(await screen.findByText('Code captured in the local development mailbox.')).toHaveAttribute('role', 'status')
+    await fireEvent.click(screen.getByRole('button', { name: 'Resend email code' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('The mail server accepted the replacement code; delivery is not confirmed.'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Resend email code' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The security email could not be submitted. Please try again.')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('does not advance to the code-entry screen when email submission fails at login', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: 'The security email could not be submitted. Please try again.',
+    }), { status: 503, headers: { 'Content-Type': 'application/json' } })))
+    await renderAccess()
+    await signIn()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The security email could not be submitted. Please try again.')
+    expect(screen.queryByRole('heading', { name: 'Enter your security code' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('ups_auth_token')).toBeNull()
+  })
+
+  it.each([
+    ['queued', 'Your recovery-code email is queued. Delivery is not yet confirmed.'],
+    ['unavailable', 'Your recovery-code email could not be queued. Save the codes shown here.'],
+    ['not_available', 'No pending recovery-code email is available. Save the codes shown here.'],
+  ])('preserves recovery codes after MFA activation and displays %s mail status before continuing', async (recovery_email_status, recovery_email_message) => {
+    const responses = [
+      { token: 'enrol-token', user: staffUser(), requires_mfa_enrolment: true },
+      { method: 'email', challenge_id: 'enrol-mail', challenge_token: 't'.repeat(64), masked_email: 'ad***@example.test', expires_in: 300, resend_available_in: 60, recovery_codes: ['EMAIL-CODE1'], delivery_status: 'captured', delivery_message: 'Code captured locally, not sent to an external inbox.' },
+      { token: 'confirmed-token', user: { ...staffUser(), mfa_method: 'email', mfa_confirmed: true }, requires_password_change: true, recovery_email_status, recovery_email_message },
+    ]
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responses.shift()), { status: 200, headers: { 'Content-Type': 'application/json' } }))))
+    const router = await renderAccess()
+    await signIn()
+    await fireEvent.click(await screen.findByRole('radio', { name: /Email code/i }))
+    await fireEvent.click(screen.getByRole('button', { name: 'Begin MFA enrolment' }))
+
+    expect(await screen.findByText('Code captured locally, not sent to an external inbox.')).toHaveAttribute('role', 'status')
+    await fireEvent.update(screen.getByLabelText('Email security code'), '123456')
+    await fireEvent.click(screen.getByRole('button', { name: 'Activate MFA' }))
+
+    expect(await screen.findByRole('heading', { name: 'MFA is active' })).toBeInTheDocument()
+    expect(screen.getByText(recovery_email_message)).toBeInTheDocument()
+    expect(screen.getByText('EMAIL-CODE1')).toBeInTheDocument()
+    expect(router.currentRoute.value.path).toBe('/access')
+    expect(localStorage.getItem('ups_auth_token')).toBe('confirmed-token')
+    await fireEvent.click(screen.getByRole('button', { name: 'Continue to change password' }))
+    expect(await screen.findByRole('heading', { name: 'Replace the temporary password' })).toBeInTheDocument()
   })
 })

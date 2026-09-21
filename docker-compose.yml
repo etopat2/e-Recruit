@@ -75,8 +75,8 @@ services:
   mailpit:
     image: axllent/mailpit:v1.27.8
     ports:
-      - "${MAILPIT_SMTP_PORT:-1026}:1025"
-      - "${MAILPIT_UI_PORT:-8026}:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1026}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8026}:8025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
@@ -131,8 +131,10 @@ services:
       AWS_ENDPOINT: http://minio:9000
       AWS_USE_PATH_STYLE_ENDPOINT: "true"
       MAIL_MAILER: smtp
-      MAIL_HOST: mailpit
-      MAIL_PORT: 1025
+      MAIL_DELIVERY_MODE: ${MAIL_DELIVERY_MODE:-capture}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_TIMEOUT_SECONDS: ${MAIL_TIMEOUT_SECONDS:-15}
       DOCUMENT_WORKER_URL: http://document-worker:8001
       DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
       PDF_TAHOMA_REGULAR_PATH: /opt/erecruit/fonts/tahoma.ttf
@@ -201,8 +203,10 @@ services:
       AWS_ENDPOINT: http://minio:9000
       AWS_USE_PATH_STYLE_ENDPOINT: "true"
       MAIL_MAILER: smtp
-      MAIL_HOST: mailpit
-      MAIL_PORT: 1025
+      MAIL_DELIVERY_MODE: ${MAIL_DELIVERY_MODE:-capture}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_TIMEOUT_SECONDS: ${MAIL_TIMEOUT_SECONDS:-15}
       DOCUMENT_WORKER_URL: http://document-worker:8001
       DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-change-this-development-token}
       PDF_TAHOMA_REGULAR_PATH: /opt/erecruit/fonts/tahoma.ttf

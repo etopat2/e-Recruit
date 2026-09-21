@@ -254,7 +254,7 @@ class GovernanceController extends Controller
         $cutoff = $scope['cutoff'];
         $campaignId = $scope['recruitment_campaign_id'] ?? null;
         $query = match ($category) {
-            'notifications' => DB::table('notifications')->whereIn('status', ['delivered', 'failed'])->where('updated_at', '<', $cutoff)
+            'notifications' => DB::table('notifications')->whereIn('status', ['delivered', 'submitted', 'captured', 'cancelled', 'failed'])->where('updated_at', '<', $cutoff)
                 ->when($campaignId, fn ($builder, $id) => $builder->whereIn('application_id', DB::table('applications')->where('recruitment_campaign_id', $id)->select('id'))),
             'exports' => DB::table('exports')->where('expires_at', '<', $cutoff),
             'expired_upload_sessions' => DB::table('upload_sessions')->whereIn('status', ['expired', 'completed'])->where('expires_at', '<', $cutoff)

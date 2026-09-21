@@ -2,13 +2,15 @@
 
 namespace App\Services;
 
-use App\Jobs\DeliverNotificationJob;
+use App\Mail\MfaEmailCodeMail;
 use App\Models\EmailOtpChallenge;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class EmailOtpService
 {
@@ -18,8 +20,10 @@ class EmailOtpService
 
     public const MaximumAttempts = 5;
 
+    public function __construct(private OutboundMailService $mail) {}
+
     /**
-     * @return array{challenge_id: string, challenge_token: string, masked_email: string, expires_in: int, resend_available_in: int}
+     * @return array{challenge_id: string, challenge_token: string, masked_email: string, expires_in: int, resend_available_in: int, delivery_status: string, delivery_message: string}
      */
     public function issue(User $user, string $purpose): array
     {
@@ -47,13 +51,13 @@ class EmailOtpService
                 'last_sent_at' => now(),
             ]);
         });
-        $this->deliver($challenge, $user, $code);
+        $delivery = $this->deliver($challenge, $user, $code);
 
-        return $this->challengePayload($challenge, $user, $bindingToken);
+        return [...$this->challengePayload($challenge, $user, $bindingToken), ...$delivery];
     }
 
     /**
-     * @return array{challenge_id: string, masked_email: string, expires_in: int, resend_available_in: int, user: User}
+     * @return array{challenge_id: string, masked_email: string, expires_in: int, resend_available_in: int, user: User, delivery_status: string, delivery_message: string}
      */
     public function resend(string $challengeId, string $bindingToken): array
     {
@@ -87,7 +91,7 @@ class EmailOtpService
 
         /** @var EmailOtpChallenge $challenge */
         $challenge = $result['challenge'];
-        $this->deliver($challenge, $challenge->user, $code);
+        $delivery = $this->deliver($challenge, $challenge->user, $code);
 
         return [
             'challenge_id' => $challenge->id,
@@ -95,6 +99,7 @@ class EmailOtpService
             'expires_in' => self::ExpiryMinutes * 60,
             'resend_available_in' => self::ResendCooldownSeconds,
             'user' => $challenge->user,
+            ...$delivery,
         ];
     }
 
@@ -150,7 +155,8 @@ class EmailOtpService
         return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     }
 
-    private function deliver(EmailOtpChallenge $challenge, User $user, string $code): void
+    /** @return array{delivery_status: string, delivery_message: string} */
+    private function deliver(EmailOtpChallenge $challenge, User $user, string $code): array
     {
         $notificationId = (string) Str::ulid();
         DB::table('notifications')->insert([
@@ -158,12 +164,60 @@ class EmailOtpService
             'event_code' => 'auth.mfa.email_code',
             'channel' => 'email',
             'recipient' => $user->email,
-            'status' => 'pending',
+            'status' => 'processing',
+            'attempt_count' => 1,
             'idempotency_key' => hash('sha256', "auth.mfa.email_code:{$challenge->id}:{$challenge->last_sent_at->format('Uv')}"),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        DeliverNotificationJob::dispatch($notificationId, $code)->afterCommit();
+        $attemptId = (string) Str::ulid();
+        DB::table('notification_attempts')->insert([
+            'id' => $attemptId,
+            'notification_id' => $notificationId,
+            'attempt_number' => 1,
+            'channel' => 'email',
+            'provider' => (string) config('mail.default'),
+            'status' => 'processing',
+            'started_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        try {
+            // Expiring login codes must not sit behind document-processing jobs.
+            $metadata = $this->mail->send($user->email, new MfaEmailCodeMail($code));
+        } catch (Throwable) {
+            $error = 'Unable to submit the security code to the email server. Please start again, or use an unused recovery code. Contact the administrator if this continues.';
+            DB::transaction(function () use ($notificationId, $attemptId, $challenge, $error): void {
+                $challenge->forceFill(['consumed_at' => now()])->save();
+                DB::table('notifications')->where('id', $notificationId)->update([
+                    'status' => 'failed', 'last_error' => $error, 'updated_at' => now(),
+                ]);
+                DB::table('notification_attempts')->where('id', $attemptId)->update([
+                    'status' => 'failed', 'error_code' => 'MailSubmissionFailed',
+                    'error_message' => $error, 'completed_at' => now(), 'updated_at' => now(),
+                ]);
+            });
+            throw new HttpResponseException(response()->json(['message' => $error], 503));
+        }
+        DB::transaction(function () use ($notificationId, $attemptId, $metadata): void {
+            DB::table('notifications')->where('id', $notificationId)->update([
+                'status' => $metadata['status'],
+                'provider_metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
+                'updated_at' => now(),
+            ]);
+            DB::table('notification_attempts')->where('id', $attemptId)->update([
+                'status' => $metadata['status'], 'provider_message_id' => $metadata['message_id'],
+                'response_metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
+                'completed_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+
+        return [
+            'delivery_status' => $metadata['status'],
+            'delivery_message' => $metadata['status'] === 'captured'
+                ? 'Development mode: the security code is in the local Mailpit inbox. No email was delivered to your external inbox.'
+                : 'The email server accepted your security code for delivery. Check your inbox and spam folder; acceptance does not guarantee inbox delivery.',
+        ];
     }
 
     /**

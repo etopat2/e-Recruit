@@ -3,14 +3,17 @@
 namespace App\Jobs;
 
 use App\Mail\MfaEmailCodeMail;
+use App\Models\EmailOtpChallenge;
 use App\Models\PushSubscription;
+use App\Services\OutboundMailService;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -33,11 +36,25 @@ class DeliverNotificationJob implements ShouldBeEncrypted, ShouldBeUnique, Shoul
         return $this->notificationId;
     }
 
-    public function handle(): void
+    public function handle(OutboundMailService $mail): void
     {
         $notification = DB::table('notifications')->where('id', $this->notificationId)->first();
-        if ($notification === null || $notification->status === 'delivered') {
+        if ($notification === null || in_array($notification->status, ['delivered', 'submitted', 'captured', 'cancelled'], true)) {
             return;
+        }
+        // Old deployments queued OTPs. Never deliver an expired/replaced code.
+        if ($notification->event_code === 'auth.mfa.email_code') {
+            $current = EmailOtpChallenge::query()
+                ->whereHas('user', fn ($query) => $query->where('email', $notification->recipient))
+                ->whereNull('consumed_at')->where('expires_at', '>', now())
+                ->get()->contains(fn (EmailOtpChallenge $challenge): bool => $this->oneTimeCode !== null && Hash::check($this->oneTimeCode, $challenge->code_hash));
+            if (! $current) {
+                DB::table('notifications')->where('id', $this->notificationId)->update([
+                    'status' => 'cancelled', 'next_attempt_at' => null, 'updated_at' => now(),
+                ]);
+
+                return;
+            }
         }
         $attemptNumber = (int) $notification->attempt_count + 1;
         $attemptId = (string) Str::ulid();
@@ -64,22 +81,22 @@ class DeliverNotificationJob implements ShouldBeEncrypted, ShouldBeUnique, Shoul
         try {
             $metadata = match ($notification->channel) {
                 'in_portal' => ['provider' => 'internal'],
-                'email' => $this->sendEmail($notification),
+                'email' => $this->sendEmail($notification, $mail),
                 'sms' => $this->sendSms($notification),
                 'push' => $this->sendPush($notification),
                 default => throw new RuntimeException("Notification channel [{$notification->channel}] is not supported."),
             };
             DB::transaction(function () use ($attemptId, $metadata): void {
                 DB::table('notification_attempts')->where('id', $attemptId)->update([
-                    'status' => 'delivered',
-                    'provider_message_id' => $metadata['provider_message_id'] ?? null,
+                    'status' => $metadata['status'] ?? 'delivered',
+                    'provider_message_id' => $metadata['message_id'] ?? $metadata['provider_message_id'] ?? null,
                     'response_metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
                     'completed_at' => now(),
                     'updated_at' => now(),
                 ]);
                 DB::table('notifications')->where('id', $this->notificationId)->update([
-                    'status' => 'delivered',
-                    'delivered_at' => now(),
+                    'status' => $metadata['status'] ?? 'delivered',
+                    'delivered_at' => isset($metadata['status']) ? null : now(),
                     'provider_metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
                     'last_error' => null,
                     'updated_at' => now(),
@@ -118,18 +135,17 @@ class DeliverNotificationJob implements ShouldBeEncrypted, ShouldBeUnique, Shoul
     }
 
     /** @return array<string, mixed> */
-    private function sendEmail(object $notification): array
+    private function sendEmail(object $notification, OutboundMailService $mail): array
     {
         if ($notification->event_code === 'auth.mfa.email_code') {
             throw_if($this->oneTimeCode === null, RuntimeException::class, 'The email MFA code is unavailable for delivery.');
-            Mail::to($notification->recipient)->send(new MfaEmailCodeMail($this->oneTimeCode));
-        } else {
-            Mail::raw('A new UPS e-Recruit update is available in your secure applicant portal.', function ($message) use ($notification): void {
-                $message->to($notification->recipient)->subject('UPS e-Recruit update');
-            });
+
+            return $mail->send($notification->recipient, new MfaEmailCodeMail($this->oneTimeCode));
         }
 
-        return ['provider' => config('mail.default'), 'accepted' => true];
+        return $mail->send($notification->recipient, (new Mailable)
+            ->subject('UPS e-Recruit update')
+            ->html('A new UPS e-Recruit update is available in your secure applicant portal.'));
     }
 
     /** @return array<string, mixed> */

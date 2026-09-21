@@ -9,6 +9,16 @@
 
 Alert on elevated 5xx/429, queue age, failed jobs, OCR latency/failure, object-store errors, database saturation, open sync conflicts, unsynchronised packs near expiry, notification retry exhaustion and audit-chain failure.
 
+## Self-hosted email
+
+Use `docker-compose.mail.yml` with the development or production Compose file to run the bundled private Postfix/OpenDKIM direct-to-MX server. Follow [the email setup and acceptance checklist](../testing.md#self-hosted-email-no-third-party-provider) before enabling internet delivery: owned sender/domain, stable IP, forward/reverse DNS, SPF, DKIM, DMARC and outbound TCP 25 are required deployment inputs. Do not publish its SMTP port or expose the local Mailpit UI.
+
+Login OTPs submit synchronously with a bounded SMTP timeout and return 503 on failure; they do not wait behind document jobs. Recovery-code emails run on the queue only after MFA activation, with encrypted job payloads, bounded retries, and stale/reset/recipient checks. Protect `APP_KEY`, Redis, failed-job storage, SMTP queues and mailbox access: those systems can hold encrypted or deliverable credentials. Recovery-email cache staging expires after 15 minutes; queued recovery jobs are discarded after 24 hours or when codes/account details change.
+
+Monitor both layers: Laravel `notifications`/`notification_attempts` distinguish `captured`, `submitted`, `retrying`, `failed`, and `cancelled`; SMTP submission never sets `delivered_at`. Postfix logs and `postqueue -p` show remote delivery acceptance/defer/bounce. A healthy SMTP listener is not proof of DNS reputation or inbox delivery. Alert on deferred queue growth, failed recovery jobs, DNS/DKIM drift and disk exhaustion. Deferred SMTP messages expire after one hour; OTP validity remains five minutes.
+
+Back up `mail-spool`, `mail-state`, and `mail-dkim` volumes securely. Preserve the DKIM key across deployments, rotate selectors deliberately, and never restore a stale mail spool to a live network during a drill. Rebuild the mail image regularly for base-image and package security updates. Keep an operational sender mailbox for delivery failures; this outbound service does not host inbound user mailboxes.
+
 ## Deployment sequence
 
 1. Record image digests, database backup identifier, migration plan and rollback owner.

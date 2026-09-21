@@ -9,6 +9,7 @@ use App\Models\Applicant;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\EmailOtpService;
+use App\Services\MfaRecoveryCodeService;
 use App\Services\TotpService;
 use App\Support\Nin;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,8 @@ use InvalidArgumentException;
 
 class AuthController extends Controller
 {
+    public function __construct(private MfaRecoveryCodeService $recoveryCodeMail) {}
+
     public function register(RegisterApplicantRequest $request, AuditService $audit): JsonResponse
     {
         $data = $request->validated();
@@ -117,7 +120,7 @@ class AuthController extends Controller
                 $audit->record('auth.mfa_email_challenge_issued', $user, actor: $user, after: ['purpose' => 'login']);
 
                 return response()->json([
-                    'message' => 'A security code was sent to the enrolled email address.',
+                    'message' => $challenge['delivery_message'],
                     'requires_email_otp' => true,
                     ...$challenge,
                 ]);
@@ -161,7 +164,7 @@ class AuthController extends Controller
         $audit->record('auth.mfa_email_resent', $user, actor: $user, after: ['purpose' => 'email_mfa']);
 
         return response()->json([
-            'message' => 'A new security code was sent.',
+            'message' => $challenge['delivery_message'],
             ...$challenge,
         ]);
     }
@@ -283,6 +286,7 @@ class AuthController extends Controller
             'mfa_confirmed_at' => null,
         ])->save();
         $audit->record($auditAction, $user, actor: $user, after: ['method' => $method]);
+        $this->recoveryCodeMail->stage($user, $recoveryCodes['plain']);
 
         if ($method === 'email') {
             return response()->json([
@@ -304,6 +308,7 @@ class AuthController extends Controller
     public function confirmMfa(Request $request, TotpService $totpService, EmailOtpService $emailOtpService, AuditService $audit): JsonResponse
     {
         $user = $request->user();
+        abort_if($user->mfa_confirmed_at !== null, 409, 'MFA is already active.');
         $data = $request->validate([
             'code' => ['required', 'digits:6'],
             'challenge_id' => [Rule::requiredIf($user->mfa_method === 'email'), 'nullable', 'ulid'],
@@ -332,6 +337,7 @@ class AuthController extends Controller
             'token' => $token,
             'requires_password_change' => $requiresPasswordChange,
             'user' => $this->userPayload($user),
+            ...$this->recoveryCodeMail->sendAfterConfirmation($user),
         ]);
     }
 

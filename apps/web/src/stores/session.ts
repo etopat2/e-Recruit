@@ -8,6 +8,8 @@ export interface EmailOtpChallengePayload {
   masked_email: string
   expires_in: number
   resend_available_in: number
+  delivery_status?: 'captured' | 'submitted'
+  delivery_message?: string
 }
 
 export interface LoginResponse extends Partial<EmailOtpChallengePayload> {

@@ -1,0 +1,71 @@
+# Optional self-hosted direct-to-MX delivery. Supply an owned domain and deploy
+# on a host with a static public IPv4/PTR and unblocked outbound TCP 25.
+# Use AFTER either docker-compose.yml or docker-compose.production.yml.
+services:
+  mail:
+    build:
+      context: infra/mail
+    environment:
+      MAIL_DOMAIN: ${MAIL_DOMAIN:?An owned MAIL_DOMAIN is required}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:?A public MAIL_HOSTNAME with matching PTR is required}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:?MAIL_FROM_ADDRESS is required}
+      MAIL_DKIM_SELECTOR: ${MAIL_DKIM_SELECTOR:-erecruit}
+      MAIL_TRUSTED_SUBNET: ${MAIL_TRUSTED_SUBNET:-172.31.250.0/28}
+    volumes:
+      - mail-spool:/var/spool/postfix
+      - mail-state:/var/lib/postfix
+      - mail-dkim:/var/lib/erecruit-mail
+    # Do not publish SMTP to the host: only the three application services join
+    # this network. The bridge retains egress for direct recipient MX delivery.
+    networks: [erecruit-mail]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  api:
+    environment: &self-hosted-mail
+      MAIL_MAILER: smtp
+      MAIL_HOST: mail
+      MAIL_PORT: 25
+      MAIL_SCHEME: smtp
+      MAIL_URL: ""
+      MAIL_EHLO_DOMAIN: ${MAIL_HOSTNAME:?MAIL_HOSTNAME is required}
+      MAIL_USERNAME: ""
+      MAIL_PASSWORD: ""
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:?MAIL_FROM_ADDRESS is required}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-UPS e-Recruit}
+      MAIL_DELIVERY_MODE: self_hosted
+    networks: [erecruit, erecruit-mail]
+    depends_on:
+      mail:
+        condition: service_healthy
+
+  queue:
+    environment: *self-hosted-mail
+    networks: [erecruit, erecruit-mail]
+    depends_on:
+      mail:
+        condition: service_healthy
+
+  scheduler:
+    environment: *self-hosted-mail
+    networks: [erecruit, erecruit-mail]
+    depends_on:
+      mail:
+        condition: service_healthy
+
+volumes:
+  mail-spool:
+  mail-state:
+  mail-dkim:
+
+networks:
+  erecruit-mail:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${MAIL_TRUSTED_SUBNET:-172.31.250.0/28}

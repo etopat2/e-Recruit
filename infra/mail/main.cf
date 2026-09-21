@@ -1,0 +1,56 @@
+# Outbound-only application SMTP. Trust is limited to the dedicated mail network.
+compatibility_level = 3.6
+inet_interfaces = all
+inet_protocols = ipv4
+mydestination =
+relay_domains =
+relayhost =
+local_transport = error:Local delivery is disabled
+maillog_file = /dev/stdout
+smtp_helo_name = $myhostname
+smtpd_banner = $myhostname ESMTP
+smtpd_helo_required = yes
+disable_vrfy_command = yes
+smtpd_sasl_auth_enable = no
+smtpd_client_restrictions = permit_mynetworks, reject
+smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
+smtpd_recipient_restrictions = reject_non_fqdn_recipient
+smtpd_sender_restrictions = reject_non_fqdn_sender, check_sender_access regexp:/etc/postfix/allowed_senders, reject
+# This listener exists only on the private Docker network. Never publish port 25.
+smtpd_tls_security_level = none
+# Login/recovery secrets must never leave the host over plaintext SMTP.
+smtp_tls_security_level = encrypt
+smtp_tls_mandatory_protocols = >=TLSv1.2
+smtp_tls_mandatory_ciphers = high
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+smtp_tls_loglevel = 1
+smtp_connect_timeout = 15s
+smtp_helo_timeout = 30s
+smtp_mail_timeout = 30s
+smtp_rcpt_timeout = 30s
+smtp_data_init_timeout = 30s
+smtp_data_xfer_timeout = 60s
+smtp_data_done_timeout = 60s
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+smtpd_milters = inet:127.0.0.1:8891
+non_smtpd_milters = $smtpd_milters
+milter_default_action = tempfail
+milter_protocol = 6
+milter_connect_timeout = 5s
+milter_command_timeout = 10s
+milter_content_timeout = 20s
+message_size_limit = 1048576
+smtpd_recipient_limit = 10
+default_destination_concurrency_limit = 5
+minimal_backoff_time = 60s
+maximal_backoff_time = 600s
+queue_run_delay = 60s
+maximal_queue_lifetime = 1h
+bounce_queue_lifetime = 1h
+delay_warning_time = 0h
+append_dot_mydomain = no
+biff = no
+readme_directory = no
+html_directory = no
+alias_maps = hash:/etc/aliases
+alias_database = hash:/etc/aliases
